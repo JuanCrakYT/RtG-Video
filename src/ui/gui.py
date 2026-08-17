@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Optional, Callable
 import os
 
+try:
+    import cv2
+except ImportError:  # pragma: no cover - optional dependency for preview playback
+    cv2 = None
+
 
 class RtGDisplayGUI:
     """
@@ -25,7 +30,7 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
-        self.root.geometry("700x520")
+        self.root.geometry("700x660")
         self.root.resizable(False, False)
         
         # Configure style
@@ -35,6 +40,14 @@ class RtGDisplayGUI:
         self.loaded_video_path: Optional[Path] = None
         self.on_video_loaded: Optional[Callable] = None
         self.on_settings_changed: Optional[Callable] = None
+        self.preview_window: Optional[tk.Toplevel] = None
+        self.preview_job = None
+        self.preview_capture = None
+        self.preview_is_playing = False
+        self.preview_frame_index = 0
+        self.preview_total_frames = 0
+        self.preview_counter_label = None
+        self.preview_toggle_btn = None
         
         # Build GUI
         self._build_gui()
@@ -217,7 +230,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Width",
-            2, 16, 8,
+            2, 40, 8,
             self._on_width_changed,
             "width_value"
         )
@@ -226,7 +239,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Height",
-            2, 16, 8,
+            2, 40, 8,
             self._on_height_changed,
             "height_value"
         )
@@ -422,16 +435,180 @@ class RtGDisplayGUI:
             text=f"{width} × {height} ({total} pixels)"
         )
     
+    def _close_preview(self):
+        """Stop preview playback and close the preview window."""
+        self.preview_is_playing = False
+
+        if self.preview_job is not None and self.preview_window is not None and self.preview_window.winfo_exists():
+            self.preview_window.after_cancel(self.preview_job)
+        self.preview_job = None
+
+        if self.preview_capture is not None:
+            self.preview_capture.release()
+            self.preview_capture = None
+
+        if self.preview_window is not None and self.preview_window.winfo_exists():
+            self.preview_window.destroy()
+        self.preview_window = None
+
+    def _toggle_preview_pause(self):
+        """Toggle pause/play state for the preview loop."""
+        if self.preview_window is None or not self.preview_window.winfo_exists():
+            return
+
+        self.preview_is_playing = not self.preview_is_playing
+        if self.preview_toggle_btn is not None:
+            self.preview_toggle_btn.config(text="⏸ Pause" if self.preview_is_playing else "▶ Play")
+
+    def _update_preview_counter(self, frame_number: int):
+        """Update the preview frame counter label."""
+        if self.preview_counter_label is not None and self.preview_window is not None and self.preview_window.winfo_exists():
+            total = self.preview_total_frames if self.preview_total_frames > 0 else "?"
+            self.preview_counter_label.config(text=f"Frame: {frame_number} / {total}")
+
+    def _open_video_preview(self, video_path: Path):
+        """Open a separate window that replays the video as a low-resolution RtG pixel preview."""
+        if cv2 is None:
+            messagebox.showerror(
+                "Preview unavailable",
+                "OpenCV is required for the preview. Install it with: pip install opencv-python"
+            )
+            return
+
+        if self.preview_window is not None and self.preview_window.winfo_exists():
+            self._close_preview()
+
+        capture = cv2.VideoCapture(str(video_path))
+        if not capture.isOpened():
+            messagebox.showerror(
+                "Preview failed",
+                f"Could not open video: {video_path.name}"
+            )
+            return
+
+        self.preview_capture = capture
+        self.preview_window = tk.Toplevel(self.root)
+        self.preview_window.title(f"RtG Preview - {video_path.name}")
+        self.preview_window.geometry("560x520")
+        self.preview_window.resizable(False, False)
+        self.preview_window.protocol("WM_DELETE_WINDOW", self._close_preview)
+
+        width = getattr(self, 'width_value_slider').get()
+        height = getattr(self, 'height_value_slider').get()
+        self.preview_is_playing = True
+        self.preview_frame_index = 0
+        self.preview_total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+
+        canvas = tk.Canvas(self.preview_window, width=420, height=420, bg="#111111", highlightthickness=0)
+        canvas.pack(padx=16, pady=(12, 8), fill=tk.BOTH, expand=True)
+
+        info = tk.Label(
+            self.preview_window,
+            text=f"RtG preview: {width} × {height} pixels",
+            bg="#F5F5F5",
+            fg="#212121",
+            font=('Segoe UI', 10, 'bold')
+        )
+        info.pack(pady=(0, 10))
+
+        self.preview_counter_label = tk.Label(
+            self.preview_window,
+            text=f"Frame: 0 / {self.preview_total_frames if self.preview_total_frames > 0 else '?'}",
+            bg="#F5F5F5",
+            fg="#212121",
+            font=('Segoe UI', 10)
+        )
+        self.preview_counter_label.pack(pady=(0, 8))
+
+        controls = tk.Frame(self.preview_window, bg="#F5F5F5")
+        controls.pack(pady=(0, 12))
+
+        self.preview_toggle_btn = tk.Button(
+            controls,
+            text="⏸ Pause",
+            command=self._toggle_preview_pause,
+            bg=self.accent_color,
+            fg="white",
+            font=('Segoe UI', 10, 'bold'),
+            padx=18,
+            pady=8,
+            border=0,
+            cursor='hand2'
+        )
+        self.preview_toggle_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        close_btn = tk.Button(
+            controls,
+            text="✕ Close",
+            command=self._close_preview,
+            bg="#E0E0E0",
+            fg="#212121",
+            font=('Segoe UI', 10),
+            padx=18,
+            pady=8,
+            border=0,
+            cursor='hand2'
+        )
+        close_btn.pack(side=tk.LEFT)
+
+        fps = capture.get(cv2.CAP_PROP_FPS)
+        delay_ms = int(1000 / fps) if fps and fps > 0 else 33
+        cell_size = min(400 // max(width, 1), 400 // max(height, 1))
+        base_x = 10
+        base_y = 10
+
+        def draw_pixel_frame():
+            if self.preview_window is None or not self.preview_window.winfo_exists():
+                return
+
+            if self.preview_is_playing:
+                ret, frame = capture.read()
+                if not ret:
+                    capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = capture.read()
+
+                if ret:
+                    self.preview_frame_index += 1
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    small = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+                    canvas.delete("all")
+
+                    for y in range(height):
+                        for x in range(width):
+                            b, g, r = small[y, x]
+                            color = '#%02x%02x%02x' % (r, g, b)
+                            canvas.create_rectangle(
+                                base_x + x * cell_size,
+                                base_y + y * cell_size,
+                                base_x + (x + 1) * cell_size,
+                                base_y + (y + 1) * cell_size,
+                                fill=color,
+                                outline="",
+                                tags="pixel"
+                            )
+
+                    canvas.create_rectangle(
+                        base_x,
+                        base_y,
+                        base_x + width * cell_size,
+                        base_y + height * cell_size,
+                        outline="#D0D0D0",
+                        width=1
+                    )
+
+                    self._update_preview_counter(self.preview_frame_index)
+
+            self.preview_job = self.preview_window.after(delay_ms, draw_pixel_frame)
+
+        draw_pixel_frame()
+
     def _on_preview(self):
         """Handle preview button."""
         if not self.loaded_video_path:
             messagebox.showwarning("No Video", "Please load a video first")
             return
-        
-        messagebox.showinfo(
-            "Preview",
-            f"Preview not yet implemented\n\nVideo: {self.loaded_video_path.name}"
-        )
+
+        self._open_video_preview(self.loaded_video_path)
     
     def _on_copy(self):
         """Handle copy button."""

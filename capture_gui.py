@@ -13,7 +13,7 @@ def capture_gui_screenshot():
     # Create root window
     root = tk.Tk()
     root.title("RtG Display")
-    root.geometry("600x400")
+    root.geometry("620x500")
     root.resizable(False, False)
     
     # Import and create GUI
