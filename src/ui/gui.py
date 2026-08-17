@@ -25,7 +25,7 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
-        self.root.geometry("600x400")
+        self.root.geometry("700x520")
         self.root.resizable(False, False)
         
         # Configure style
@@ -206,12 +206,12 @@ class RtGDisplayGUI:
         # Title
         title = tk.Label(
             content,
-            text="Canvas Size",
+            text="🎚️  Canvas Size",
             font=('Segoe UI', 11, 'bold'),
             bg=self.bg_secondary,
             fg=self.text_primary
         )
-        title.pack(anchor='w', pady=(0, 15))
+        title.pack(anchor='w', pady=(0, 20))
         
         # Width slider
         self._build_slider(
@@ -230,6 +230,28 @@ class RtGDisplayGUI:
             self._on_height_changed,
             "height_value"
         )
+        
+        # Output size display
+        output_frame = tk.Frame(content, bg=self.bg_secondary)
+        output_frame.pack(fill=tk.X, pady=(20, 0), padx=(0, 0))
+        
+        output_label = tk.Label(
+            output_frame,
+            text="Output Size:",
+            font=('Segoe UI', 9),
+            bg=self.bg_secondary,
+            fg=self.text_secondary
+        )
+        output_label.pack(side=tk.LEFT)
+        
+        self.output_size_label = tk.Label(
+            output_frame,
+            text="8 × 8 (64 pixels)",
+            font=('Segoe UI', 9, 'bold'),
+            bg=self.bg_secondary,
+            fg=self.accent_color
+        )
+        self.output_size_label.pack(side=tk.LEFT, padx=(10, 0))
     
     def _build_slider(self, parent, label: str, min_val: int, max_val: int, 
                      default_val: int, on_change: Callable, attr_name: str):
@@ -292,37 +314,61 @@ class RtGDisplayGUI:
         button_frame = tk.Frame(parent, bg=self.bg_primary)
         button_frame.pack(fill=tk.X, pady=(15, 0))
         
-        # Generate button
-        generate_btn = tk.Button(
-            button_frame,
-            text="✨ Generate Display",
-            command=self._on_generate,
-            bg=self.accent_color,
-            fg='white',
-            font=('Segoe UI', 11, 'bold'),
-            padx=30,
-            pady=10,
-            border=0,
-            cursor='hand2',
-            activebackground=self.accent_hover
-        )
-        generate_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        # Left buttons frame
+        left_frame = tk.Frame(button_frame, bg=self.bg_primary)
+        left_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Preview button
-        preview_btn = tk.Button(
-            button_frame,
-            text="👁️  Preview",
-            command=self._on_preview,
+        # Copy button
+        copy_btn = tk.Button(
+            left_frame,
+            text="📋 Copy RtG",
+            command=self._on_copy,
             bg=self.border_color,
             fg=self.text_primary,
-            font=('Segoe UI', 11),
-            padx=20,
+            font=('Segoe UI', 10),
+            padx=15,
             pady=10,
             border=0,
             cursor='hand2',
             activebackground='#D0D0D0'
         )
-        preview_btn.pack(side=tk.RIGHT, padx=10)
+        copy_btn.pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Right buttons frame
+        right_frame = tk.Frame(button_frame, bg=self.bg_primary)
+        right_frame.pack(side=tk.RIGHT, fill=tk.X)
+        
+        # Preview button
+        preview_btn = tk.Button(
+            right_frame,
+            text="👁️  Preview",
+            command=self._on_preview,
+            bg=self.border_color,
+            fg=self.text_primary,
+            font=('Segoe UI', 10),
+            padx=15,
+            pady=10,
+            border=0,
+            cursor='hand2',
+            activebackground='#D0D0D0'
+        )
+        preview_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Generate button
+        generate_btn = tk.Button(
+            right_frame,
+            text="✨ Generate RtG",
+            command=self._on_generate,
+            bg=self.accent_color,
+            fg='white',
+            font=('Segoe UI', 10, 'bold'),
+            padx=20,
+            pady=10,
+            border=0,
+            cursor='hand2',
+            activebackground=self.accent_hover
+        )
+        generate_btn.pack(side=tk.LEFT)
     
     def _on_load_video(self):
         """Handle video loading."""
@@ -353,6 +399,7 @@ class RtGDisplayGUI:
     
     def _on_width_changed(self, value: int):
         """Handle width slider change."""
+        self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
             height = getattr(self, 'height_value_slider').get()
@@ -360,10 +407,20 @@ class RtGDisplayGUI:
     
     def _on_height_changed(self, value: int):
         """Handle height slider change."""
+        self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
             height = getattr(self, 'height_value_slider').get()
             self.on_settings_changed({'width': width, 'height': height})
+    
+    def _update_output_size(self):
+        """Update the output size display."""
+        width = getattr(self, 'width_value_slider').get()
+        height = getattr(self, 'height_value_slider').get()
+        total = width * height
+        self.output_size_label.config(
+            text=f"{width} × {height} ({total} pixels)"
+        )
     
     def _on_preview(self):
         """Handle preview button."""
@@ -375,6 +432,22 @@ class RtGDisplayGUI:
             "Preview",
             f"Preview not yet implemented\n\nVideo: {self.loaded_video_path.name}"
         )
+    
+    def _on_copy(self):
+        """Handle copy button."""
+        settings = self.get_settings()
+        if not settings['video']:
+            messagebox.showwarning("No Video", "Please load a video first")
+            return
+        
+        # Copy settings to clipboard
+        try:
+            self.root.clipboard_clear()
+            clipboard_text = f"Video: {settings['video']}\nCanvas: {settings['width']}×{settings['height']}"
+            self.root.clipboard_append(clipboard_text)
+            messagebox.showinfo("Copied", "Settings copied to clipboard!")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to copy: {e}")
     
     def _on_generate(self):
         """Handle generate button."""
