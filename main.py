@@ -213,6 +213,12 @@ def main():
     )
     
     parser.add_argument(
+        "--gui-demo",
+        action="store_true",
+        help="Run interactive GUI demo"
+    )
+    
+    parser.add_argument(
         "--width",
         type=int,
         default=DEFAULT_DISPLAY_WIDTH,
@@ -249,11 +255,20 @@ def main():
             use_fallback=args.fallback
         )
         sys.exit(0 if success else 1)
+    elif args.gui_demo:
+        # Import here to avoid issues on headless systems
+        from demo_gui import demo_gui
+        demo_gui()
     elif args.cli:
         parser.print_help()
     else:
         # Launch GUI
-        launch_gui()
+        try:
+            launch_gui()
+        except Exception as e:
+            print(f"Error launching GUI: {e}")
+            print("Try: python main.py --demo")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
