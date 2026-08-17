@@ -1,7 +1,8 @@
 """
-RtG Display - Main CLI entry point
+RtG Display - Main entry point
 
 Generates pixel matrices for animated displays compatible with Road To Gramby's (RtG).
+Includes both GUI and CLI modes.
 """
 
 import argparse
@@ -17,6 +18,7 @@ from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
 from src.export.rtg_exporter import CombinedExporter
+from src.ui.gui import launch_gui
 
 
 def load_real_pixel_template(template_path: str = None):
@@ -193,7 +195,7 @@ def run_demo(
 
 
 def main():
-    """Main CLI entry point."""
+    """Main entry point."""
     parser = argparse.ArgumentParser(
         description="RtG Display - Animated display generator"
     )
@@ -201,7 +203,13 @@ def main():
     parser.add_argument(
         "--demo",
         action="store_true",
-        help="Run demo mode"
+        help="Run demo mode (CLI)"
+    )
+    
+    parser.add_argument(
+        "--cli",
+        action="store_true",
+        help="Run in CLI mode (no GUI)"
     )
     
     parser.add_argument(
@@ -241,8 +249,11 @@ def main():
             use_fallback=args.fallback
         )
         sys.exit(0 if success else 1)
-    else:
+    elif args.cli:
         parser.print_help()
+    else:
+        # Launch GUI
+        launch_gui()
 
 
 if __name__ == "__main__":
