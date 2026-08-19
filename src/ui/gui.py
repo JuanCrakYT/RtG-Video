@@ -5,15 +5,31 @@ Professional and minimalist interface for video loading and canvas configuration
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 from pathlib import Path
 from typing import Optional, Callable
 import os
+import tempfile
+
+from src.video.processing import DEFAULT_PALETTE, normalize_palette, quantize_frame
 
 try:
     import cv2
 except ImportError:  # pragma: no cover - optional dependency for preview playback
     cv2 = None
+
+try:
+    import pygame
+except ImportError:  # pragma: no cover - optional dependency for preview audio
+    pygame = None
+
+try:
+    from moviepy import VideoFileClip
+except ImportError:  # pragma: no cover - support older MoviePy releases
+    try:
+        from moviepy.editor import VideoFileClip
+    except ImportError:  # pragma: no cover - optional dependency for audio extraction
+        VideoFileClip = None
 
 
 class RtGDisplayGUI:
@@ -30,7 +46,7 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
-        self.root.geometry("700x660")
+        self.root.geometry("700x790")
         self.root.resizable(False, False)
         
         # Configure style
@@ -40,14 +56,19 @@ class RtGDisplayGUI:
         self.loaded_video_path: Optional[Path] = None
         self.on_video_loaded: Optional[Callable] = None
         self.on_settings_changed: Optional[Callable] = None
+        self.on_generate: Optional[Callable] = None
         self.preview_window: Optional[tk.Toplevel] = None
         self.preview_job = None
         self.preview_capture = None
+        self.preview_audio_clip = None
+        self.preview_audio_path = None
         self.preview_is_playing = False
         self.preview_frame_index = 0
         self.preview_total_frames = 0
         self.preview_counter_label = None
         self.preview_toggle_btn = None
+        self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
+        self.palette_combo = None
         
         # Build GUI
         self._build_gui()
@@ -137,6 +158,9 @@ class RtGDisplayGUI:
         
         # Settings card
         self._build_settings_card(main_frame)
+
+        # Color palette card
+        self._build_palette_card(main_frame)
         
         # Action buttons
         self._build_action_buttons(main_frame)
@@ -321,6 +345,88 @@ class RtGDisplayGUI:
         
         # Store slider for later access
         setattr(self, f"{attr_name}_slider", slider)
+
+    def _build_palette_card(self, parent):
+        """Build the editable quantization palette, keeping black mandatory."""
+        card_frame = ttk.Frame(parent, relief='solid', borderwidth=1)
+        card_frame.pack(fill=tk.X, pady=(0, 15))
+
+        content = tk.Frame(card_frame, bg=self.bg_secondary)
+        content.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+
+        tk.Label(
+            content,
+            text="Color Palette",
+            font=('Segoe UI', 11, 'bold'),
+            bg=self.bg_secondary,
+            fg=self.text_primary
+        ).pack(anchor='w', pady=(0, 10))
+
+        controls = tk.Frame(content, bg=self.bg_secondary)
+        controls.pack(fill=tk.X)
+
+        self.palette_combo = ttk.Combobox(
+            controls,
+            state="readonly",
+            values=self._palette_labels(),
+            width=34
+        )
+        self.palette_combo.current(0)
+        self.palette_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        tk.Button(
+            controls,
+            text="+ Add",
+            command=self._add_palette_color,
+            bg=self.accent_color,
+            fg="white",
+            border=0,
+            padx=12,
+            pady=5,
+            cursor='hand2'
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        tk.Button(
+            controls,
+            text="Remove",
+            command=self._remove_palette_color,
+            bg=self.border_color,
+            fg=self.text_primary,
+            border=0,
+            padx=12,
+            pady=5,
+            cursor='hand2'
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+    def _palette_labels(self):
+        return [
+            f"#{red:02X}{green:02X}{blue:02X} ({red}, {green}, {blue})"
+            for red, green, blue in self.palette_colors
+        ]
+
+    def _refresh_palette_combo(self):
+        if self.palette_combo is not None:
+            self.palette_combo["values"] = self._palette_labels()
+            self.palette_combo.current(0)
+
+    def _add_palette_color(self):
+        selected = colorchooser.askcolor(title="Add palette color")
+        if selected[0] is None:
+            return
+        self.palette_colors = [list(color) for color in normalize_palette(
+            self.palette_colors + [selected[0]]
+        )]
+        self._refresh_palette_combo()
+
+    def _remove_palette_color(self):
+        if self.palette_combo is None:
+            return
+        selected_index = self.palette_combo.current()
+        if selected_index <= 0:
+            messagebox.showinfo("Required color", "Black is always required in the palette.")
+            return
+        self.palette_colors.pop(selected_index)
+        self._refresh_palette_combo()
     
     def _build_action_buttons(self, parent):
         """Build the action buttons."""
@@ -447,6 +553,20 @@ class RtGDisplayGUI:
             self.preview_capture.release()
             self.preview_capture = None
 
+        if pygame is not None and pygame.mixer.get_init():
+            pygame.mixer.music.stop()
+
+        if self.preview_audio_clip is not None:
+            self.preview_audio_clip.close()
+            self.preview_audio_clip = None
+
+        if self.preview_audio_path is not None:
+            try:
+                os.unlink(self.preview_audio_path)
+            except OSError:
+                pass
+            self.preview_audio_path = None
+
         if self.preview_window is not None and self.preview_window.winfo_exists():
             self.preview_window.destroy()
         self.preview_window = None
@@ -457,8 +577,58 @@ class RtGDisplayGUI:
             return
 
         self.preview_is_playing = not self.preview_is_playing
+        if pygame is not None and pygame.mixer.get_init():
+            if self.preview_is_playing:
+                pygame.mixer.music.unpause()
+            else:
+                pygame.mixer.music.pause()
         if self.preview_toggle_btn is not None:
             self.preview_toggle_btn.config(text="⏸ Pause" if self.preview_is_playing else "▶ Play")
+
+    def _start_preview_audio(self, video_path: Path):
+        """Extract and start the video's audio, if the optional audio stack is available."""
+        if pygame is None or VideoFileClip is None:
+            messagebox.showwarning(
+                "Audio unavailable",
+                "Install the preview audio dependencies with: pip install -r requirements.txt"
+            )
+            return False
+
+        try:
+            self.preview_audio_clip = VideoFileClip(str(video_path))
+            if self.preview_audio_clip.audio is None:
+                self.preview_audio_clip.close()
+                self.preview_audio_clip = None
+                return False
+
+            audio_file = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            audio_file.close()
+            self.preview_audio_path = audio_file.name
+            self.preview_audio_clip.audio.write_audiofile(
+                self.preview_audio_path,
+                codec="pcm_s16le",
+                logger=None
+            )
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            pygame.mixer.music.load(self.preview_audio_path)
+            pygame.mixer.music.play(loops=-1)
+            return True
+        except Exception as error:
+            if self.preview_audio_clip is not None:
+                self.preview_audio_clip.close()
+                self.preview_audio_clip = None
+            if self.preview_audio_path is not None:
+                try:
+                    os.unlink(self.preview_audio_path)
+                except OSError:
+                    pass
+                self.preview_audio_path = None
+            messagebox.showwarning(
+                "Audio unavailable",
+                f"Could not load the video's audio: {error}"
+            )
+            return False
 
     def _update_preview_counter(self, frame_number: int):
         """Update the preview frame counter label."""
@@ -498,6 +668,7 @@ class RtGDisplayGUI:
         self.preview_is_playing = True
         self.preview_frame_index = 0
         self.preview_total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        audio_is_playing = self._start_preview_audio(video_path)
 
         canvas = tk.Canvas(self.preview_window, width=420, height=420, bg="#111111", highlightthickness=0)
         canvas.pack(padx=16, pady=(12, 8), fill=tk.BOTH, expand=True)
@@ -562,21 +733,36 @@ class RtGDisplayGUI:
                 return
 
             if self.preview_is_playing:
+                if audio_is_playing and pygame is not None:
+                    audio_position_ms = pygame.mixer.music.get_pos()
+                    target_frame = int(max(audio_position_ms, 0) * fps / 1000)
+                    if self.preview_total_frames > 0:
+                        target_frame %= self.preview_total_frames
+                    if target_frame < self.preview_frame_index:
+                        capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                    elif target_frame > self.preview_frame_index + 1:
+                        capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+
                 ret, frame = capture.read()
                 if not ret:
                     capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     ret, frame = capture.read()
 
                 if ret:
-                    self.preview_frame_index += 1
+                    self.preview_frame_index = int(capture.get(cv2.CAP_PROP_POS_FRAMES))
                     frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    small = cv2.resize(frame, (width, height), interpolation=cv2.INTER_AREA)
+                    quantized_frame = quantize_frame(
+                        frame,
+                        width,
+                        height,
+                        self.palette_colors,
+                    )
                     canvas.delete("all")
 
                     for y in range(height):
                         for x in range(width):
-                            b, g, r = small[y, x]
-                            color = '#%02x%02x%02x' % (r, g, b)
+                            red, green, blue = quantized_frame[y][x]
+                            color = '#%02x%02x%02x' % (red, green, blue)
                             canvas.create_rectangle(
                                 base_x + x * cell_size,
                                 base_y + y * cell_size,
@@ -635,6 +821,18 @@ class RtGDisplayGUI:
         width = getattr(self, 'width_value_slider').get()
         height = getattr(self, 'height_value_slider').get()
         
+        if self.on_generate:
+            try:
+                output_paths = self.on_generate(self.get_settings())
+                messagebox.showinfo(
+                    "Generated",
+                    f"Generated {width}×{height} display\n"
+                    f"Frames exported to: {output_paths['animation']}"
+                )
+            except Exception as error:
+                messagebox.showerror("Generation failed", str(error))
+            return
+
         messagebox.showinfo(
             "Generate",
             f"Generating {width}×{height} display\nfrom: {self.loaded_video_path.name}"
@@ -645,7 +843,8 @@ class RtGDisplayGUI:
         return {
             'video': str(self.loaded_video_path) if self.loaded_video_path else None,
             'width': getattr(self, 'width_value_slider').get(),
-            'height': getattr(self, 'height_value_slider').get()
+            'height': getattr(self, 'height_value_slider').get(),
+            'palette': [color.copy() for color in self.palette_colors]
         }
     
     def run(self):
@@ -653,7 +852,7 @@ class RtGDisplayGUI:
         self.root.mainloop()
 
 
-def launch_gui(on_video_loaded=None, on_settings_changed=None):
+def launch_gui(on_video_loaded=None, on_settings_changed=None, on_generate=None):
     """
     Launch the RtG Display GUI.
     
@@ -665,4 +864,5 @@ def launch_gui(on_video_loaded=None, on_settings_changed=None):
     gui = RtGDisplayGUI(root)
     gui.on_video_loaded = on_video_loaded
     gui.on_settings_changed = on_settings_changed
+    gui.on_generate = on_generate
     gui.run()

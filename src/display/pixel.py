@@ -17,7 +17,14 @@ class Pixel:
     A pixel is a collection of blocks (from a template) positioned at a grid location.
     """
     
-    def __init__(self, x: int, y: int, blocks: List[RtGBlock], uuid: str):
+    def __init__(
+        self,
+        x: int,
+        y: int,
+        blocks: List[RtGBlock],
+        uuid: str,
+        block_indices: Optional[Dict[int, int]] = None,
+    ):
         """
         Initialize a pixel.
         
@@ -31,6 +38,7 @@ class Pixel:
         self.y = y
         self.blocks = blocks
         self.uuid = uuid
+        self.block_indices = block_indices or {}
         self.active = False  # Whether this pixel is currently "on"
     
     def activate(self) -> None:
@@ -48,6 +56,33 @@ class Pixel:
     def get_block_count(self) -> int:
         """Get the number of blocks in this pixel."""
         return len(self.blocks)
+
+    def get_signal_endpoint(self) -> Tuple[int, str]:
+        """Return the real Splitter_3 block and signal port for this pixel."""
+        splitter_entries = [
+            (template_index, global_index)
+            for template_index, global_index in self.block_indices.items()
+            if self.blocks[template_index].block_type == "Splitter_3"
+        ]
+        if len(splitter_entries) != 1:
+            raise ValueError(
+                f"Pixel {self.uuid} must contain exactly one Splitter_3, "
+                f"found {len(splitter_entries)}"
+            )
+
+        template_index, global_index = splitter_entries[0]
+        splitter = self.blocks[template_index]
+        if not splitter.connections:
+            raise ValueError(
+                f"Pixel {self.uuid} Splitter_3 has no connections to resolve"
+            )
+
+        input_point = splitter.connections[0][0]
+        if not isinstance(input_point, str):
+            raise ValueError(
+                f"Pixel {self.uuid} Splitter_3 input point must be numeric"
+            )
+        return global_index, input_point
 
 
 class PixelTemplate:
@@ -200,6 +235,6 @@ class PixelTemplate:
             }
         
         # Create and return Pixel object
-        pixel = Pixel(x, y, new_blocks, pixel_uuid)
+        pixel = Pixel(x, y, new_blocks, pixel_uuid, index_mapping)
         
         return pixel, index_mapping

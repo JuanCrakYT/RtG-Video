@@ -108,7 +108,8 @@ class AnimationExporter:
         for frame in sequence.frames:
             frames.append({
                 "duration": frame.duration,
-                "activePixels": frame.get_active_pixels()
+                "activePixels": frame.get_active_pixels(),
+                "pixelColors": frame.get_pixel_colors(),
             })
         
         return {

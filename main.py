@@ -17,8 +17,10 @@ from src.display.pixel import PixelTemplate
 from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
+from src.animation.signal_logic import build_signal_network, resolve_pixel_inputs
 from src.export.rtg_exporter import CombinedExporter
 from src.ui.gui import launch_gui
+from src.video.processing import BLACK, WHITE, GRAY, video_to_sequence
 
 
 def load_real_pixel_template(template_path: str = None):
@@ -171,6 +173,18 @@ def run_demo(
     builder.add_frame(frame3)
     
     sequence = builder.build()
+
+    frame_active_pixels = {
+        frame_index: frame.get_active_pixels()
+        for frame_index, frame in enumerate(sequence.frames)
+    }
+    pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
+    build_signal_network(
+        matrix.build,
+        frame_active_pixels,
+        pixel_inputs,
+        [frame.duration for frame in sequence.frames],
+    )
     
     print(f"✓ Animation created:")
     print(f"  - Frames: {sequence.get_frame_count()}")
@@ -194,6 +208,68 @@ def run_demo(
     return True
 
 
+def run_color_demo(output_dir: str = "output/color_demo"):
+    """Export one real pixel over eight black, white, and gray frames."""
+    reset_uuid_manager()
+    pixel_template = load_real_pixel_template()
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(1, 1)
+        .set_spacing(DEFAULT_PIXEL_SPACING)
+        .set_template(pixel_template)
+        .build()
+    )
+    pixel = matrix.get_pixel(0, 0)
+    colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
+    builder = SequenceBuilder()
+    for color in colors:
+        frame = FrameBuilder(duration=0.1).set_frame_number(len(builder.frames))
+        frame.set_pixel_color(pixel.uuid, color)
+        builder.add_frame(frame.build())
+    sequence = builder.build()
+    pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
+    build_signal_network(
+        matrix.build,
+        {index: [pixel.uuid] for index in range(len(sequence.frames))},
+        pixel_inputs,
+        [frame.duration for frame in sequence.frames],
+    )
+    paths = CombinedExporter.export_complete(matrix, sequence, output_dir)
+    print(f"Exported 1 pixel / 8 color frames to {output_dir}")
+    print(f"Palette: black={BLACK}, white={WHITE}, gray={GRAY}")
+    for key, path in paths.items():
+        print(f"  - {key}: {path}")
+    return True
+
+
+def generate_video_build(settings):
+    """Run resize, nearest-palette quantization, physical wiring, and export."""
+    reset_uuid_manager()
+    pixel_template = load_real_pixel_template(settings["pixel_template"] if "pixel_template" in settings else None)
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(settings["width"], settings["height"])
+        .set_spacing(DEFAULT_PIXEL_SPACING)
+        .set_template(pixel_template)
+        .build()
+    )
+    sequence = video_to_sequence(
+        settings["video"],
+        matrix,
+        settings.get("palette", [BLACK, WHITE, GRAY]),
+    )
+    build_signal_network(
+        matrix.build,
+        {
+            index: frame.get_active_pixels()
+            for index, frame in enumerate(sequence.frames)
+        },
+        resolve_pixel_inputs(matrix.pixels.values()),
+        [frame.duration for frame in sequence.frames],
+    )
+    return CombinedExporter.export_complete(matrix, sequence, "output")
+
+
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
@@ -204,6 +280,12 @@ def main():
         "--demo",
         action="store_true",
         help="Run demo mode (CLI)"
+    )
+
+    parser.add_argument(
+        "--color-demo",
+        action="store_true",
+        help="Export one pixel with eight black, white, and gray frames"
     )
     
     parser.add_argument(
@@ -247,7 +329,10 @@ def main():
     
     args = parser.parse_args()
     
-    if args.demo:
+    if args.color_demo:
+        success = run_color_demo(output_dir=args.output)
+        sys.exit(0 if success else 1)
+    elif args.demo:
         success = run_demo(
             width=args.width,
             height=args.height,
@@ -264,7 +349,7 @@ def main():
     else:
         # Launch GUI
         try:
-            launch_gui()
+            launch_gui(on_generate=generate_video_build)
         except Exception as e:
             print(f"Error launching GUI: {e}")
             print("Try: python main.py --demo")
