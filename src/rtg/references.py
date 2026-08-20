@@ -6,7 +6,7 @@ References can be made via direct indices or via UUID + EphemeralAttachment.
 """
 
 from typing import Tuple, Optional
-from .blocks import RtGBlock, RtGBuild
+from .blocks import RtGBlock, RtGBuild, to_rtg_index
 from .cframe import CFrame
 from .uuid import get_uuid_manager
 
@@ -64,7 +64,11 @@ class ReferenceManager:
             point_id: Point ID on parent (default "1")
             connection_type: Connection type (default "1")
         """
-        child_block.add_connection(connection_type, point_id, parent_index)
+        child_block.add_connection(
+            connection_type,
+            point_id,
+            to_rtg_index(parent_index),
+        )
     
     @staticmethod
     def create_uuid_reference(
@@ -101,7 +105,11 @@ class ReferenceManager:
         parent_block.add_ephemeral_attachment(uuid, "Base", cframe)
         
         # Add connection to child block referencing the UUID
-        child_block.add_connection(connection_type, uuid, parent_index)
+        child_block.add_connection(
+            connection_type,
+            uuid,
+            to_rtg_index(parent_index),
+        )
     
     @staticmethod
     def connect_pixel_to_base(
@@ -174,10 +182,10 @@ def validate_references(build: RtGBuild) -> Tuple[bool, list]:
                     f"Block {idx} connection {conn_idx}: "
                     f"parent_index must be int, got {type(parent_index)}"
                 )
-            elif parent_index < 0 or parent_index >= len(build.blocks):
+            elif parent_index < 1 or parent_index > len(build.blocks):
                 errors.append(
                     f"Block {idx} connection {conn_idx}: "
-                    f"parent_index {parent_index} out of range [0, {len(build.blocks)-1}]"
+                    f"parent_index {parent_index} out of range [1, {len(build.blocks)}]"
                 )
             
             # Validate connection type

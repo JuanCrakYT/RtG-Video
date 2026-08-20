@@ -232,7 +232,7 @@ def test_format_validation():
     # Valid build JSON
     valid_json = [
         ["Base", [], {}],
-        ["Part", [["1", "1", 0]], {"RGB": [255, 0, 0]}]
+        ["Part", [["1", "1", 1]], {"RGB": [255, 0, 0]}]
     ]
     
     is_valid, error = validate_build_json(valid_json)

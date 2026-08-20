@@ -6,7 +6,7 @@ Handles cloning complex pixel templates with index remapping.
 
 from copy import deepcopy
 from typing import Dict, List, Tuple, Optional
-from ..rtg.blocks import RtGBlock, RtGBuild
+from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
 from ..rtg.cframe import CFrame
 from ..rtg.uuid import get_uuid_manager
 
@@ -179,10 +179,10 @@ class PixelTemplate:
         # Generate unique UUID for this pixel
         pixel_uuid = uuid_manager.generate_and_register((x, y))
         
-        # Create the complete mapping first because the real template contains
-        # references to blocks that appear later in the source array.
+        # Template references are RtG indices (1-based), while the build list
+        # is indexed by Python (0-based) internally.
         index_mapping = {
-            old_idx: len(target_build.blocks) + old_idx
+            old_idx + 1: to_rtg_index(len(target_build.blocks) + old_idx)
             for old_idx in range(len(self.template.blocks))
         }
         new_blocks = []
@@ -223,8 +223,8 @@ class PixelTemplate:
             # Create positioning CFrame
             cframe = create_pixel_offset_cframe(x, y, spacing)
             
-            # Add connection to base with UUID
-            first_block.connections.append(["1", pixel_uuid, base_index])
+            # Add connection to Base using RtG's 1-based parent index.
+            first_block.connections.append(["1", pixel_uuid, to_rtg_index(base_index)])
             
             # Add ephemeral attachment to Base
             if "EphemeralAttachments" not in base_block.properties:

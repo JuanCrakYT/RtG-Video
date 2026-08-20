@@ -8,7 +8,7 @@ pixels. Connection IDs are numeric because they are part of the RtG format.
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, Sequence
 
-from ..rtg.blocks import RtGBlock, RtGBuild
+from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
 
 
 OR_OUTPUT = "1"
@@ -41,8 +41,8 @@ def _wire_between(
 ) -> int:
     """Connect a signal source to a target using the reference Wire topology."""
     wire = RtGBlock("Wire", connections=[
-        ["3", OR_OUTPUT, source_index],
-        ["1", target_point, target_index],
+        ["3", OR_OUTPUT, to_rtg_index(source_index)],
+        ["1", target_point, to_rtg_index(target_index)],
     ])
     return build.add_block(wire)
 
@@ -169,7 +169,7 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                 errors.append(f"block {block_index}: malformed connection")
                 continue
             local_type, parent_point, parent_index = connection
-            if not isinstance(parent_index, int) or not 0 <= parent_index < len(build.blocks):
+            if not isinstance(parent_index, int) or not 1 <= parent_index <= len(build.blocks):
                 errors.append(f"block {block_index}: invalid parent index {parent_index}")
             if not isinstance(local_type, str) or not isinstance(parent_point, str):
                 errors.append(f"block {block_index}: non-string connection IDs")
@@ -184,5 +184,7 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
         if block.block_type != "Wire" or len(block.connections) < 2:
             continue
         target_index = block.connections[1][2]
-        if build.blocks[target_index].block_type == "Delayer":
+        if not isinstance(target_index, int) or not 1 <= target_index <= len(build.blocks):
+            continue
+        if build.blocks[target_index - 1].block_type == "Delayer":
             errors.append(f"Wire {block_index}: signal target cannot be a Delayer")

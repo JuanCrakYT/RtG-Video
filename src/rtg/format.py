@@ -142,8 +142,8 @@ def validate_build_json(data: Any) -> Tuple[bool, Optional[str]]:
             if not isinstance(parent_idx, int):
                 return (False, f"Block {idx} connection {conn_idx}: parent_index must be int")
             
-            if parent_idx < 0 or parent_idx >= len(data):
-                return (False, f"Block {idx} connection {conn_idx}: parent_index out of range")
+            if parent_idx < 1 or parent_idx > len(data):
+                return (False, f"Block {idx} connection {conn_idx}: parent_index out of range for 1-based RtG data")
         
         # Validate properties
         if not isinstance(properties, dict):

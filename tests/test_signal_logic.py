@@ -81,8 +81,8 @@ def test_pixel_with_three_frames_gets_a_private_two_gate_chain():
 
     assert len(gate_indexes) == 2
     assert len(wires) == 5
-    assert wires[-1].connections[0] == ["3", "1", gate_indexes[-1]]
-    assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index]
+    assert wires[-1].connections[0] == ["3", "1", gate_indexes[-1] + 1]
+    assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
 
 
 def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
@@ -98,7 +98,7 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
     assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 1
     assert not any(block.block_type == "Note" for block in build.blocks)
     output_wire = [block for block in build.blocks if block.block_type == "Wire"][-1]
-    assert output_wire.connections[1] == ["1", "3", endpoints["pixel_0"].block_index]
+    assert output_wire.connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
 
 
 def test_three_active_frames_extend_to_two_ors_and_resolve_uuid_to_splitter():
@@ -116,6 +116,36 @@ def test_three_active_frames_extend_to_two_ors_and_resolve_uuid_to_splitter():
     assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
     assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 2
     assert not validate_signal_connections(build)
+
+
+def test_real_pixel_parent_references_are_one_based():
+    template_path = Path(__file__).parents[1] / "assets" / "pixel" / "pixel.json"
+    template = PixelTemplate(load_pixel_template_from_file(str(template_path)))
+    matrix = MatrixBuilder().set_dimensions(2, 1).set_template(template).build()
+
+    for block in matrix.build.blocks:
+        for connection in block.connections:
+            assert 1 <= connection[2] <= len(matrix.build.blocks)
+
+
+def test_splitter_endpoint_point_is_derived_from_template_connection():
+    build = RtGBuild()
+    build.create_base()
+    splitter_index = build.add_block(
+        RtGBlock("Splitter_3", connections=[["8", "4", 1]])
+    )
+    pixel = type(
+        "PixelStub",
+        (),
+        {
+            "uuid": "pixel-template-port",
+            "get_signal_endpoint": lambda self: (splitter_index, "8"),
+        },
+    )()
+
+    endpoint = resolve_pixel_inputs([pixel])[pixel.uuid]
+    assert endpoint.block_index == splitter_index
+    assert endpoint.point_id == "8"
 
 
 def test_real_pixel_asset_generates_three_frame_reference_counts():

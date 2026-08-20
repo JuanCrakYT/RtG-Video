@@ -48,6 +48,9 @@ def test_3x2_physical_canvas():
     assert all(block.block_type != "Gate-OR" for block in blocks)
     assert all(block.block_type != "Wire" for block in blocks)
     assert all(block.block_type != "Note" for block in blocks)
+    for block in blocks:
+        for connection in block.connections:
+            assert 1 <= connection[2] <= len(blocks)
 
     positions = matrix.build.blocks[matrix.base_index].properties["EphemeralAttachments"]
     assert len(positions) == 6

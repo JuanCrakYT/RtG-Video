@@ -9,6 +9,13 @@ from typing import List, Dict, Any, Optional
 from .cframe import CFrame
 
 
+def to_rtg_index(zero_based_index: int) -> int:
+    """Convert an internal Python block index to RtG's 1-based index."""
+    if not isinstance(zero_based_index, int) or zero_based_index < 0:
+        raise ValueError(f"Invalid internal block index: {zero_based_index}")
+    return zero_based_index + 1
+
+
 class RtGBlock:
     """
     Represents a single RtG block.
