@@ -128,10 +128,13 @@ def run_demo(
     
     # Export only the physical canvas at this stage.
     print(f"Exporting to {output_dir}...")
-    output_path = Path(output_dir) / "display.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    RtGExporter.save_display(matrix, str(output_path), compact=False)
-    print(f"✓ Physical canvas exported: {output_path}")
+    export_paths = RtGExporter.export_physical_canvas(
+        matrix,
+        output_dir,
+        compact=False,
+    )
+    print(f"✓ Physical canvas exported: {export_paths['display']}")
+    print(f"✓ Synchronized metadata exported: {export_paths['info']}")
     
     print(f"\n{'='*60}")
     print("Demo completed successfully!")
@@ -153,10 +156,12 @@ def generate_canvas_build(settings):
         .set_template(pixel_template)
         .build()
     )
-    output_path = Path(settings.get("output_dir", "output")) / "display.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    RtGExporter.save_display(matrix, str(output_path), compact=False)
-    return {"display": str(output_path), "stats": matrix.get_stats()}
+    export_paths = RtGExporter.export_physical_canvas(
+        matrix,
+        settings.get("output_dir", "output"),
+        compact=False,
+    )
+    return {**export_paths, "stats": matrix.get_stats()}
 
 
 def run_color_demo(output_dir: str = "output/color_demo"):

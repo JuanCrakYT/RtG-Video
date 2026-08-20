@@ -72,6 +72,43 @@ class RtGExporter:
             "total_blocks": stats["total_blocks"]
         }
 
+    @staticmethod
+    def export_physical_canvas(
+        matrix: DisplayMatrix,
+        output_dir: str,
+        compact: bool = False,
+    ) -> Dict[str, str]:
+        """Export one synchronized physical-canvas generation."""
+        from pathlib import Path
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        for filename in (
+            "display.json",
+            "info.json",
+            "animation.json",
+            "demo_display.json",
+            "demo_info.json",
+            "demo_animation.json",
+        ):
+            generated_file = output_path / filename
+            if generated_file.exists():
+                generated_file.unlink()
+
+        display_path = output_path / "display.json"
+        info_path = output_path / "info.json"
+        RtGExporter.save_display(matrix, str(display_path), compact)
+
+        info_data = {"display": RtGExporter.get_export_info(matrix)}
+        with info_path.open("w", encoding="utf-8") as info_file:
+            json.dump(info_data, info_file, indent=2)
+
+        return {
+            "display": str(display_path),
+            "info": str(info_path),
+        }
+
 
 class AnimationExporter:
     """
