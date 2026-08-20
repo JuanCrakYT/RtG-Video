@@ -573,10 +573,10 @@ El arreglo `cframe` almacenado dentro de cada `EphemeralAttachment` consta de **
 
 ```json
 [
-    X,  Y,  Z,    <-- Vectores de Posición Espacial (3 valores)
-   R1, R2, R3,    <-- Matriz de Rotación / Transformación (9 valores)
-   R4, R5, R6,
-   R7, R8, R9
+    X, Y, Z,        // Posición: 3 valores
+    R1, R2, R3,     // Rotación: 3×3 = 9 valores
+    R4, R5, R6,
+    R7, R8, R9
 ]
 ```
 
