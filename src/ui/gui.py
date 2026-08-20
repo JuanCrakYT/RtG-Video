@@ -254,7 +254,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Width",
-            2, 40, 8,
+            5, 128, 8,
             self._on_width_changed,
             "width_value"
         )
@@ -263,7 +263,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Height",
-            2, 40, 8,
+            5, 128, 8,
             self._on_height_changed,
             "height_value"
         )
@@ -814,10 +814,6 @@ class RtGDisplayGUI:
     
     def _on_generate(self):
         """Handle generate button."""
-        if not self.loaded_video_path:
-            messagebox.showwarning("No Video", "Please load a video first")
-            return
-        
         width = getattr(self, 'width_value_slider').get()
         height = getattr(self, 'height_value_slider').get()
         
@@ -826,17 +822,14 @@ class RtGDisplayGUI:
                 output_paths = self.on_generate(self.get_settings())
                 messagebox.showinfo(
                     "Generated",
-                    f"Generated {width}×{height} display\n"
-                    f"Frames exported to: {output_paths['animation']}"
+                    f"Generated physical canvas {width}×{height}\n"
+                    f"Display exported to: {output_paths['display']}"
                 )
             except Exception as error:
                 messagebox.showerror("Generation failed", str(error))
             return
 
-        messagebox.showinfo(
-            "Generate",
-            f"Generating {width}×{height} display\nfrom: {self.loaded_video_path.name}"
-        )
+        messagebox.showinfo("Generate", f"Canvas configured: {width}×{height}")
     
     def get_settings(self) -> dict:
         """Get current settings."""

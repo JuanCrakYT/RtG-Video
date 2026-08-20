@@ -9,6 +9,10 @@ from .pixel import Pixel, PixelTemplate
 from ..rtg.blocks import RtGBuild
 
 
+MIN_CANVAS_DIMENSION = 1
+MAX_CANVAS_DIMENSION = 128
+
+
 class DisplayMatrix:
     """
     Represents a 2D display grid of pixels.
@@ -23,6 +27,13 @@ class DisplayMatrix:
             height: Number of pixels vertically
             pixel_template: The PixelTemplate to use for cloning
         """
+        if not isinstance(width, int) or not isinstance(height, int):
+            raise TypeError("Canvas width and height must be integers")
+        if not MIN_CANVAS_DIMENSION <= width <= MAX_CANVAS_DIMENSION:
+            raise ValueError(f"Canvas width must be between {MIN_CANVAS_DIMENSION} and {MAX_CANVAS_DIMENSION}")
+        if not MIN_CANVAS_DIMENSION <= height <= MAX_CANVAS_DIMENSION:
+            raise ValueError(f"Canvas height must be between {MIN_CANVAS_DIMENSION} and {MAX_CANVAS_DIMENSION}")
+
         self.width = width
         self.height = height
         self.template = pixel_template
@@ -150,6 +161,12 @@ class MatrixBuilder:
     
     def set_dimensions(self, width: int, height: int) -> 'MatrixBuilder':
         """Set matrix dimensions."""
+        if not isinstance(width, int) or not isinstance(height, int):
+            raise TypeError("Canvas width and height must be integers")
+        if not MIN_CANVAS_DIMENSION <= width <= MAX_CANVAS_DIMENSION:
+            raise ValueError(f"Canvas width must be between {MIN_CANVAS_DIMENSION} and {MAX_CANVAS_DIMENSION}")
+        if not MIN_CANVAS_DIMENSION <= height <= MAX_CANVAS_DIMENSION:
+            raise ValueError(f"Canvas height must be between {MIN_CANVAS_DIMENSION} and {MAX_CANVAS_DIMENSION}")
         self.width = width
         self.height = height
         return self

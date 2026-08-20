@@ -4,6 +4,7 @@ Pixel template and instantiation for RtG Display.
 Handles cloning complex pixel templates with index remapping.
 """
 
+from copy import deepcopy
 from typing import Dict, List, Tuple, Optional
 from ..rtg.blocks import RtGBlock, RtGBuild
 from ..rtg.cframe import CFrame
@@ -178,23 +179,23 @@ class PixelTemplate:
         # Generate unique UUID for this pixel
         pixel_uuid = uuid_manager.generate_and_register((x, y))
         
-        # Create mapping from template indices to new indices
-        index_mapping = {}
+        # Create the complete mapping first because the real template contains
+        # references to blocks that appear later in the source array.
+        index_mapping = {
+            old_idx: len(target_build.blocks) + old_idx
+            for old_idx in range(len(self.template.blocks))
+        }
         new_blocks = []
         uuid_mapping = {}
         
         # Clone each block from template
         for old_idx, template_block in enumerate(self.template.blocks):
-            # Create new block (shallow copy of properties dict)
+            # Deep-copy properties so pixel instances never share nested data.
             new_block = RtGBlock(
                 template_block.block_type,
                 connections=[],  # Will be remapped
-                properties=template_block.properties.copy()
+                properties=deepcopy(template_block.properties)
             )
-            
-            # Store new index
-            new_index = len(target_build.blocks) + len(new_blocks)
-            index_mapping[old_idx] = new_index
             
             # Remap all connections
             for old_conn in template_block.connections:

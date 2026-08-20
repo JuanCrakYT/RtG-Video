@@ -18,7 +18,7 @@ from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
 from src.animation.signal_logic import build_signal_network, resolve_pixel_inputs
-from src.export.rtg_exporter import CombinedExporter
+from src.export.rtg_exporter import CombinedExporter, RtGExporter
 from src.ui.gui import launch_gui
 from src.video.processing import BLACK, WHITE, GRAY, video_to_sequence
 
@@ -126,86 +126,37 @@ def run_demo(
     print(f"  - Total blocks: {stats['total_blocks']}")
     print(f"  - Dimensions: {stats['width']}×{stats['height']}\n")
     
-    # Create animation sequence
-    print("Creating animation sequence...")
-    
-    builder = SequenceBuilder()
-    
-    # Frame 1: Checkerboard pattern (corners active)
-    frame1 = (
-        FrameBuilder(duration=0.1)
-        .set_frame_number(0)
-        .build()
-    )
-    for x in range(width):
-        for y in range(height):
-            if (x + y) % 2 == 0:
-                pixel = matrix.get_pixel(x, y)
-                if pixel:
-                    frame1.add_pixel(pixel.uuid)
-    builder.add_frame(frame1)
-    
-    # Frame 2: Inverse checkerboard
-    frame2 = (
-        FrameBuilder(duration=0.1)
-        .set_frame_number(1)
-        .build()
-    )
-    for x in range(width):
-        for y in range(height):
-            if (x + y) % 2 == 1:
-                pixel = matrix.get_pixel(x, y)
-                if pixel:
-                    frame2.add_pixel(pixel.uuid)
-    builder.add_frame(frame2)
-    
-    # Frame 3: All active
-    frame3 = (
-        FrameBuilder(duration=0.1)
-        .set_frame_number(2)
-        .build()
-    )
-    for x in range(width):
-        for y in range(height):
-            pixel = matrix.get_pixel(x, y)
-            if pixel:
-                frame3.add_pixel(pixel.uuid)
-    builder.add_frame(frame3)
-    
-    sequence = builder.build()
-
-    frame_active_pixels = {
-        frame_index: frame.get_active_pixels()
-        for frame_index, frame in enumerate(sequence.frames)
-    }
-    pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
-    build_signal_network(
-        matrix.build,
-        frame_active_pixels,
-        pixel_inputs,
-        [frame.duration for frame in sequence.frames],
-    )
-    
-    print(f"✓ Animation created:")
-    print(f"  - Frames: {sequence.get_frame_count()}")
-    print(f"  - Total duration: {sequence.get_total_duration():.2f}s\n")
-    
-    # Export
+    # Export only the physical canvas at this stage.
     print(f"Exporting to {output_dir}...")
-    
-    export_paths = CombinedExporter.export_complete(
-        matrix, sequence, output_dir, compact=False
-    )
-    
-    print(f"✓ Export complete:")
-    for key, path in export_paths.items():
-        print(f"  - {key}: {path}")
+    output_path = Path(output_dir) / "display.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    RtGExporter.save_display(matrix, str(output_path), compact=False)
+    print(f"✓ Physical canvas exported: {output_path}")
     
     print(f"\n{'='*60}")
     print("Demo completed successfully!")
     print(f"{'='*60}\n")
     
     return True
+
+
+def generate_canvas_build(settings):
+    """Generate only the physical canvas and export its display JSON."""
+    reset_uuid_manager()
+    pixel_template = load_real_pixel_template(
+        settings.get("pixel_template")
+    )
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(int(settings["width"]), int(settings["height"]))
+        .set_spacing(DEFAULT_PIXEL_SPACING)
+        .set_template(pixel_template)
+        .build()
+    )
+    output_path = Path(settings.get("output_dir", "output")) / "display.json"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    RtGExporter.save_display(matrix, str(output_path), compact=False)
+    return {"display": str(output_path), "stats": matrix.get_stats()}
 
 
 def run_color_demo(output_dir: str = "output/color_demo"):
@@ -349,7 +300,7 @@ def main():
     else:
         # Launch GUI
         try:
-            launch_gui(on_generate=generate_video_build)
+            launch_gui(on_generate=generate_canvas_build)
         except Exception as e:
             print(f"Error launching GUI: {e}")
             print("Try: python main.py --demo")
