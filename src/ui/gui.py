@@ -12,6 +12,7 @@ import os
 import tempfile
 
 from src.video.processing import DEFAULT_PALETTE, normalize_palette, quantize_frame
+from src.ui.base64 import encode_latest_display
 
 try:
     import cv2
@@ -46,8 +47,8 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
-        self.root.geometry("760x700")
-        self.root.minsize(600, 700)
+        self.root.geometry("760x800")
+        self.root.minsize(600, 800)
         self.root.resizable(True, True)
         
         # Configure style
@@ -161,6 +162,9 @@ class RtGDisplayGUI:
 
         # Settings card
         self._build_settings_card(main_frame)
+
+        # Color palette card
+        self._build_palette_card(main_frame)
         
         # Action buttons
         self._build_action_buttons(main_frame)
@@ -452,10 +456,42 @@ class RtGDisplayGUI:
             activebackground='#D0D0D0'
         )
         copy_btn.pack(side=tk.LEFT, padx=(0, 5))
+
+        # Base64 copy button
+        base64_btn = tk.Button(
+            left_frame,
+            text="Copy Base64",
+            command=self._on_copy_base64,
+            bg=self.border_color,
+            fg=self.text_primary,
+            font=('Segoe UI', 10),
+            padx=15,
+            pady=10,
+            border=0,
+            cursor='hand2',
+            activebackground='#D0D0D0'
+        )
+        base64_btn.pack(side=tk.LEFT, padx=(0, 5))
         
         # Right buttons frame
         right_frame = tk.Frame(button_frame, bg=self.bg_primary)
         right_frame.pack(side=tk.RIGHT, fill=tk.X)
+
+        # Preview button
+        preview_btn = tk.Button(
+            right_frame,
+            text="👁️  Preview",
+            command=self._on_preview,
+            bg=self.border_color,
+            fg=self.text_primary,
+            font=('Segoe UI', 10),
+            padx=15,
+            pady=10,
+            border=0,
+            cursor='hand2',
+            activebackground='#D0D0D0'
+        )
+        preview_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Generate button
         generate_btn = tk.Button(
@@ -782,16 +818,27 @@ class RtGDisplayGUI:
     
     def _on_copy(self):
         """Handle copy button."""
-        if self.generated_json is None:
+        if self.generated_display_path is None or not self.generated_display_path.is_file():
             messagebox.showwarning("No canvas", "Generate a canvas first")
             return
         
         try:
+            self.generated_json = self.generated_display_path.read_text(encoding="utf-8")
             self.root.clipboard_clear()
             self.root.clipboard_append(self.generated_json)
             messagebox.showinfo("Copied", "display.json copied to clipboard!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to copy: {e}")
+
+    def _on_copy_base64(self):
+        """Encode the latest display JSON, save it, and copy it to the clipboard."""
+        try:
+            encoded_json = encode_latest_display(self.generated_display_path)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(encoded_json)
+            messagebox.showinfo("Copied", "Base64 saved to output/base64.json and copied to clipboard!")
+        except Exception as error:
+            messagebox.showerror("Base64 failed", str(error))
     
     def _on_generate(self):
         """Handle generate button."""
