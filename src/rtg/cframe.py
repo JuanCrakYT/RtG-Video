@@ -205,5 +205,5 @@ def create_pixel_offset_cframe(x: int, y: int, spacing: float = 1.0) -> CFrame:
         pos_z,
         1.0, 0.0, 0.0,
         0.0, 1.0, -1e16,
-        0.0, 0.0, 1.0
+        0.0, 1.0, 1.0
     ])
