@@ -1,78 +1,333 @@
 # RtG Video
 
-Animated display generator for **Road To Gramby's (Roblox)**. Generates physical pixel matrices that can display animations by controlling which pixels receive input signals.
+Animated display generator for **Road To Gramby's (Roblox)**.
+
+RtG Video converts videos into low-resolution animated pixel displays that can be exported as Road To Gramby's-compatible data. The project combines video processing, pixel-matrix generation, animation management, and RtG save-format handling into a single pipeline.
 
 ## Overview
 
-RtG Display is a Python application that:
+RtG Video is a Python application designed to create physical pixel displays capable of reproducing animations.
 
-1. **Generates pixel displays** - Creates 2D matrices of controllable pixels
-2. **Manages animations** - Converts frame sequences into activation patterns
-3. **Exports to RtG format** - Produces JSON files compatible with Road To Gramby's
+The general pipeline is:
 
-Instead of creating a separate build for each animation frame, this system creates a single reusable display that activates/deactivates pixels over time through signal control.
+```md
+Video
+  ↓
+Frame Processing
+  ↓
+Resize / Palette Quantization
+  ↓
+Pixel Matrix
+  ↓
+Animation Sequence
+  ↓
+RtG Export
+  ↓
+JSON
+```
+
+Instead of generating a completely different build for every frame, RtG Video creates a reusable display and changes the state of its pixels through animation data.
+
+This makes the physical display independent from the animation itself.
+
+## Features
+
+* **Video input** — Load video files and process them frame by frame.
+* **Configurable canvas** — Choose the width and height of the pixel display.
+* **Palette support** — Convert video frames to a configurable RGB palette.
+* **Pixel matrix generation** — Create a reusable 2D matrix of controllable pixels.
+* **Animation sequences** — Represent video playback as a sequence of timed frames.
+* **RtG format support** — Build and serialize Road To Gramby's structures.
+* **UUID-based pixel mapping** — Keep pixel identity independent from array order.
+* **CFrame support** — Handle RtG coordinate-frame transformations.
+* **EphemeralAttachments** — Position generated display components using UUID references.
+* **JSON export** — Export display, animation, and metadata information.
+* **Preview window** — Preview the processed video at the selected canvas resolution.
+* **GUI configuration** — Configure the source video, canvas size, and color palette through a graphical interface.
+* **Tests** — Includes tests for core functionality, canvas generation, signal logic, and output synchronization.
 
 ## Project Structure
 
-```
-src/
-├── rtg/                 # RtG format core
-│   ├── uuid.py         # UUID generation and tracking
-│   ├── cframe.py       # Coordinate frame transformations
-│   ├── blocks.py       # RtG block definitions
-│   ├── references.py   # Block reference system
-│   └── format.py       # JSON serialization
+The repository is organized into several layers:
+
+```tree
+RtG Video/
+├─ assets/
+│  ├─ pixel/
+│  │  └─ pixel.json
+│  └─ tools/
+│     └─ json/
+│        ├─ __pycache__/
+│        │  └─ json.cpython-314.pyc
+│        ├─ compact_json.py
+│        ├─ input.json
+│        ├─ output.json
+│        └─ README.md
 │
-├── display/            # Display system
-│   ├── pixel.py        # Individual pixel structure
-│   ├── matrix.py       # 2D pixel matrix
-│   └── layout.py       # (planned) pixel layout templates
+├─ examples/
+│  └─ bad_apple/
 │
-├── animation/          # Animation system
-│   ├── frame.py        # Animation frame representation
-│   ├── sequence.py     # Frame sequence management
-│   └── timing.py       # (planned) timing utilities
+├─ output/
+│  ├─ canvas_2x2/
+│  │  └─ display.json
+│  ├─ color_demo/
+│  │  ├─ animation.json
+│  │  ├─ display.json
+│  │  └─ info.json
+│  ├─ topology_validation/
+│  │  ├─ animation.json
+│  │  ├─ display.json
+│  │  └─ info.json
+│  ├─ base64.json
+│  └─ display.json
 │
-├── video/              # Video processing
-│   ├── decoder.py      # (planned) video decoding
-│   ├── frames.py       # (planned) frame extraction
-│   ├── resize.py       # (planned) image resizing
-│   └── threshold.py    # (planned) binary conversion
+├─ screenshots/
 │
-└── export/             # Export system
-    ├── rtg_exporter.py # RtG format export
-    └── json_exporter.py # (planned) JSON utilities
+├─ src/
+│  ├─ animation/
+│  │  ├─ __init__.py
+│  │  ├─ frame.py
+│  │  ├─ sequence.py
+│  │  └─ signal_logic.py
+│  │
+│  ├─ display/
+│  │  ├─ __init__.py
+│  │  ├─ matrix.py
+│  │  └─ pixel.py
+│  │
+│  ├─ export/
+│  │  ├─ __init__.py
+│  │  └─ rtg_exporter.py
+│  │
+│  ├─ rtg/
+│  │  ├─ __init__.py
+│  │  ├─ blocks.py
+│  │  ├─ cframe.py
+│  │  ├─ format.py
+│  │  ├─ references.py
+│  │  └─ uuid.py
+│  │
+│  ├─ ui/
+│  │  ├─ __init__.py
+│  │  ├─ base64.py
+│  │  └─ gui.py
+│  │
+│  ├─ video/
+│  │  ├─ __init__.py
+│  │  └─ processing.py
+│  │
+│  ├─ __init__.py
+│  └─ config.py
+│
+├─ tests/
+│  ├─ test_canvas.py
+│  ├─ test_core.py
+│  ├─ test_output_sync.py
+│  └─ test_signal_logic.py
+│
+├─ .gitattributes
+├─ .gitignore
+├─ capture_gui.py
+├─ demo_gui.py
+├─ GUI_COMPLETE.md
+├─ GUI_DOCUMENTATION.md
+├─ GUI_FIXES_SUMMARY.py
+├─ GUI_SUMMARY.py
+├─ IMPLEMENTATION_SUMMARY.md
+├─ LICENSE
+├─ main.py
+├─ obj_ids-spanish.md
+├─ preview_gui.py
+├─ QUICKSTART.md
+├─ README.md
+├─ requirements.txt
+├─ RtG_Save_Format_Specification-spanish.md
+├─ SETUP_COMPLETE.md
+├─ test_gui_features.py
+└─ verify_gui_elements.py
 ```
 
-## Quick Start
+### Source modules
 
-### Installation
+| Module           | Purpose                                                        |
+| ---------------- | -------------------------------------------------------------- |
+| `src/rtg/`       | Core Road To Gramby's data structures and save-format handling |
+| `src/display/`   | Pixel definitions and 2D display matrices                      |
+| `src/animation/` | Animation frames, sequences, and signal behavior               |
+| `src/video/`     | Video frame processing, resizing, and palette quantization     |
+| `src/export/`    | Export generated display and animation data                    |
+| `src/ui/`        | Graphical interface and Base64-related utilities               |
+| `src/config.py`  | Project configuration                                          |
+
+## Requirements
+
+* Python 3.x
+* OpenCV (`opencv-python`)
+* NumPy
+* Tkinter
+* Pygame
+* MoviePy
+* Other dependencies listed in `requirements.txt`
+
+Install the required Python packages with:
 
 ```bash
-# Clone the repository
-cd "RtG Display"
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### Run Demo
+## Running the Application
+
+The main entry point is:
 
 ```bash
-python main.py --demo --width 2 --height 2 --output output
+python main.py
 ```
 
-This creates a 2×2 pixel display with a simple animation and exports it to JSON files.
-
-### Run Tests
+The project also contains dedicated GUI and preview entry points:
 
 ```bash
-python tests/test_core.py
+python demo_gui.py
+python preview_gui.py
 ```
 
-## Usage
+The exact behavior of each entry point depends on the current project configuration and workflow.
 
-### Creating a Display
+## GUI
+
+RtG Video includes a graphical interface called **RtG Display**.
+
+The GUI currently provides configuration for:
+
+* video loading
+* canvas width
+* canvas height
+* output size
+* color palette management
+* video preview
+* display generation
+
+The preview system can display the source video after it has been reduced to the selected pixel resolution.
+
+For example:
+
+```md
+Source Video
+      ↓
+40 × 30 Processing
+      ↓
+Pixel Preview
+```
+
+This makes it possible to visually inspect how a video will look on a low-resolution RtG display before generating the final output.
+
+## Video Processing
+
+Video processing is implemented in:
+
+```text
+src/video/processing.py
+```
+
+Frames are processed through the following stages:
+
+1. Read a frame from the source video.
+2. Convert the frame to RGB.
+3. Resize the frame to the display dimensions.
+4. Quantize each pixel to the nearest color in the selected palette.
+5. Map each processed pixel to the corresponding display pixel.
+6. Store the result as an animation frame.
+
+The current processing implementation uses OpenCV for frame decoding and resizing and NumPy for color-distance calculations. 
+
+### Palette Quantization
+
+RtG Video supports configurable RGB palettes.
+
+A palette always contains black and can contain additional colors.
+
+For every processed pixel, the system selects the palette color with the smallest squared RGB distance:
+
+```md
+source pixel
+    ↓
+compare against palette
+    ↓
+nearest palette color
+    ↓
+display pixel
+```
+
+The default palette currently contains:
+
+```md
+Black
+White
+Gray
+```
+
+The GUI allows the palette to be modified before generating the display. 
+
+## Display System
+
+The display system represents the physical animation surface as a 2D matrix.
+
+Each matrix position corresponds to a pixel object.
+
+For example:
+
+```text
+(0,0) (1,0) (2,0) (3,0)
+
+(0,1) (1,1) (2,1) (3,1)
+
+(0,2) (1,2) (2,2) (3,2)
+```
+
+Each pixel has a stable UUID that can be used to reference it from animation data.
+
+This separates the identity of a pixel from its position in the internal Python data structures.
+
+## Animation System
+
+Animations are represented as ordered sequences of frames.
+
+A frame contains the state of the display for a specific duration.
+
+Conceptually:
+
+```md
+Frame 0
+  duration: 1 / FPS
+  pixel states
+       ↓
+Frame 1
+  duration: 1 / FPS
+  pixel states
+       ↓
+Frame 2
+  duration: 1 / FPS
+  pixel states
+       ↓
+...
+```
+
+The animation system is implemented in:
+
+```md
+src/animation/
+```
+
+with the main components:
+
+* `frame.py` — individual animation frames
+* `sequence.py` — ordered frame sequences
+* `signal_logic.py` — signal and pixel-state logic
+
+## Creating a Display
+
+A display can be created programmatically using a pixel template and a matrix builder.
+
+Example:
 
 ```python
 from src.display.pixel import PixelTemplate
@@ -83,18 +338,24 @@ import src.rtg.blocks as blocks
 # Create a pixel template
 pixel_build = RtGBuild()
 pixel_build.create_base()
+
 visual = blocks.create_part([64, 64, 64])
 pixel_build.add_block(visual)
+
 template = PixelTemplate(pixel_build)
 
-# Build a 8x8 display
-matrix = (MatrixBuilder()
-          .set_dimensions(8, 8)
-          .set_template(template)
-          .build())
+# Build an 8 × 8 display
+matrix = (
+    MatrixBuilder()
+    .set_dimensions(8, 8)
+    .set_template(template)
+    .build()
+)
 ```
 
-### Creating an Animation
+## Creating an Animation
+
+Animation frames can be constructed using the animation builders:
 
 ```python
 from src.animation.frame import FrameBuilder
@@ -103,16 +364,33 @@ from src.animation.sequence import SequenceBuilder
 # Get pixel UUIDs
 uuids = [pixel.get_uuid() for pixel in matrix.pixels.values()]
 
-# Build animation
+# Create an animation
 sequence = SequenceBuilder("animation")
-frame1 = FrameBuilder(0).add_pixels(uuids).set_duration(1.0).build()
-frame2 = FrameBuilder(1).set_duration(0.5).build()  # Blank frame
-sequence.add_frame(frame1).add_frame(frame2)
+
+frame1 = (
+    FrameBuilder(0)
+    .add_pixels(uuids)
+    .set_duration(1.0)
+    .build()
+)
+
+frame2 = (
+    FrameBuilder(1)
+    .set_duration(0.5)
+    .build()
+)
+
+sequence.add_frame(frame1)
+sequence.add_frame(frame2)
 
 animation = sequence.build()
 ```
 
-### Exporting
+## Exporting
+
+The exporter converts the generated display and animation data into JSON output.
+
+Example:
 
 ```python
 from src.export.rtg_exporter import CombinedExporter
@@ -123,118 +401,291 @@ files = CombinedExporter.export_complete(
     output_dir="output",
     prefix="my_animation"
 )
-# Creates:
-#   - my_animation_display.json  (RtG build)
-#   - my_animation_animation.json (animation sequence)
-#   - my_animation_info.json      (metadata)
 ```
 
-## Format Specifications
+Depending on the exporter configuration, the resulting data can include:
 
-### UUID System
+```md
+my_animation_display.json
+my_animation_animation.json
+my_animation_info.json
+```
 
-UUIDs are formatted as: `{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}`
+The generated display data represents the RtG structure, while animation data describes the temporal state of the display.
 
-The UUID manager:
-- Generates random valid UUIDs
-- Tracks UUID → pixel position mapping
-- Prevents collisions
-- Validates format
+## RtG Format
 
-### CFrame (Coordinate Frame)
+RtG Video is built around the Road To Gramby's save format.
 
-A 12-element array representing 3D transformation:
-- Elements 0-2: Position (X, Y, Z)
-- Elements 3-11: 3×3 rotation matrix
+The project does not treat the display as a collection of arbitrary absolute-positioned objects. Instead, it follows the relationships and references used by the RtG save structure.
 
-Example: `[5.0, 10.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]`
+The core RtG implementation is located in:
 
-### RtG Block Tuple
+```md
+src/rtg/
+```
+
+### UUIDs
+
+UUIDs are used to uniquely identify generated pixels.
+
+Example:
+
+```json
+{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
+```
+
+The UUID system is responsible for:
+
+* generating UUIDs
+* tracking UUID associations
+* validating UUID format
+* preventing collisions
+
+### CFrames
+
+A CFrame is represented by 12 numerical values:
+
+```json
+[x, y, z, r1, r2, r3, r4, r5, r6, r7, r8, r9]
+```
+
+The first three values represent position:
+
+```js
+X, Y, Z
+```
+
+The remaining nine values represent a 3 × 3 rotation matrix.
+
+Example:
 
 ```json
 [
-    "BlockType",
-    [["ConnectionType", "PointID", ParentIndex], ...],
-    {"PropertyKey": value, ...}
+  5.0,
+  10.0,
+  0.0,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  1.0,
+  0.0,
+  0.0,
+  0.0,
+  1.0
 ]
 ```
 
+### RtG Block Tuples
+
+RtG blocks follow the project's internal tuple representation:
+
+```json
+[
+  "BlockType",
+  [
+    ["ConnectionType", "PointID", ParentIndex]
+  ],
+  {
+    "PropertyKey": "value"
+  }
+]
+```
+
+The exact meaning of block types, connection points, and references depends on the RtG save format being implemented.
+
 ### EphemeralAttachments
 
-Attachments allow spatial positioning via UUID reference:
+Spatial placement can also use UUID-based ephemeral attachments:
 
 ```json
 {
-    "EphemeralAttachments": {
-        "{uuid}": {
-            "partName": "Base",
-            "cframe": [x, y, z, r1, r2, r3, r4, r5, r6, r7, r8, r9]
-        }
+  "EphemeralAttachments": {
+    "{uuid}": {
+      "partName": "Base",
+      "cframe": [
+        0, 0, 0,
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+      ]
     }
+  }
 }
 ```
 
-## Implementation Status
+This allows generated display components to be positioned independently from the order of the serialized block list.
 
-### ✅ Completed
-- UUID generation and management
-- CFrame calculations and transformations
-- RtG block structure and serialization
-- Reference system (direct and UUID-based)
-- Pixel representation and template cloning
-- Display matrix (2D grid)
-- Animation frames and sequences
-- JSON export (display and animation)
-- Core test suite
+## Design Principles
 
-### 🟡 Planned
-- Image/video import
-- Binary threshold conversion
-- Advanced optimization (delta frames)
-- Replay system integration
-- GUI editor
+### Reusable Display
 
-### ❌ Not Started
-- Video codec support
-- Real-time preview
-- Performance profiling
+The display is generated once and reused for the entire animation.
+The animation changes pixel states instead of generating an entirely new physical display for every frame.
 
-## Key Design Decisions
+### UUID-Based Pixel Identity
 
-### No Absolute Coordinates
-Following RtG format, blocks don't have absolute positions. Instead:
-1. Position is computed relative to parent block
-2. Each pixel is positioned via UUID + CFrame offset
-3. All pixels attach to Base through EphemeralAttachments
+Pixels are identified by UUID rather than depending exclusively on array indices.
+This provides stable references even when internal ordering changes.
 
-### UUID Over Indices
-While RtG supports direct index references, this system uses UUIDs for pixel positioning because:
-- Allows spatial injection via CFrame
-- Decouples pixel data from array order
-- Supports animated spatial manipulation
+### Separation of Geometry and Animation
 
-### Stateless Frames
-Animation frames contain only:
-- Duration (time before next frame)
-- Set of active pixel UUIDs
-- No position or rotation data
+The display defines:
 
-This allows playback logic to be simplified and external to the RtG system.
+```text
+Where pixels exist
+```
 
-## Contributing
+while the animation defines:
 
-Contributions welcome! Areas of focus:
-- Image/video import pipeline
-- Optimization algorithms
-- Export format extensions
-- Testing and validation
+```text
+Which pixels are active
+and for how long
+```
 
-## License
+Keeping these concepts separate makes the system easier to extend and process.
 
-MIT License - See LICENSE file for details
+### Palette-Based Rendering
+
+Video frames are reduced to a finite palette so they can be represented by the available pixel colors.
+
+This is especially useful for low-resolution displays where the number of available colors is intentionally limited.
+
+## Output Examples
+
+The repository contains several generated examples under:
+
+```md
+output/
+```
+
+including:
+
+```md
+canvas_2x2/
+color_demo/
+topology_validation/
+```
+
+These examples can be used to inspect generated display and animation JSON data.
+
+The repository also contains a `bad_apple` example under:
+
+```md
+examples/bad_apple/
+```
+
+## Testing
+
+Tests are located in:
+
+```md
+tests/
+```
+
+Run the core test suite with:
+
+```bash
+python tests/test_core.py
+```
+
+Individual tests can also be executed directly:
+
+```bash
+python tests/test_canvas.py
+python tests/test_output_sync.py
+python tests/test_signal_logic.py
+```
+
+Additional GUI verification scripts are available at the repository root:
+
+```bash
+python test_gui_features.py
+python verify_gui_elements.py
+```
+
+## Current Status
+
+### ✅ Implemented
+
+* RtG UUID generation and management
+* CFrame calculations and transformations
+* RtG block structures
+* Reference handling
+* JSON serialization
+* Pixel representation
+* Pixel templates
+* 2D display matrices
+* Animation frames
+* Animation sequences
+* Signal logic
+* Video frame loading
+* Frame resizing
+* Palette normalization
+* Palette quantization
+* Video-to-animation conversion
+* GUI configuration
+* Video preview
+* JSON export
+* Base64-related utilities
+* Core tests
+* GUI verification tools
+
+The current GUI implementation includes video loading, canvas configuration, palette configuration, and preview playback functionality. 
+
+The current video processor can read a video, resize frames to the matrix dimensions, quantize them to a palette, and map the resulting colors onto matrix pixels. 
+
+### 🟡 In Progress / Future Work
+
+Possible future improvements include:
+
+* More advanced frame compression
+* Delta-frame optimization
+* Better performance for large videos
+* More efficient animation serialization
+* More extensive GUI controls
+* Additional palette and rendering options
+* Improved export workflows
+* Additional validation tools
+* Profiling and performance optimization
+
+## Documentation
+
+Additional project documentation is available in:
+
+* `QUICKSTART.md`
+* `GUI_DOCUMENTATION.md`
+* `GUI_COMPLETE.md`
+* `IMPLEMENTATION_SUMMARY.md`
+* `SETUP_COMPLETE.md`
+* `obj_ids-spanish.md`
+* `RtG_Save_Format_Specification-spanish.md`
+
+The RtG save-format documentation should be treated as the primary reference for the RtG structures implemented by this project.
 
 ## References
 
-- RtG Save Format Specification (v0.406 or later)
-- obj_ids-spanish.md - Block and connection documentation
-- Road To Gramby's - Roblox game
+* [Road To Gramby's](https://www.roblox.com/)
+* [RtG Save Format Specification](RtG_Save_Format_Specification-spanish.md)
+* [Object and Connection IDs](obj_ids-spanish.md)
+
+## Contributing
+
+Contributions are welcome.
+
+Useful areas for contribution include:
+
+* video processing
+* animation optimization
+* export improvements
+* testing
+* validation
+* GUI improvements
+* performance optimization
+
+Please keep changes consistent with the existing RtG data model and document any changes to the generated format.
+
+## License
+
+See [`LICENSE`](LICENSE) for the project's license information.
