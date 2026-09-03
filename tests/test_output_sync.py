@@ -9,6 +9,7 @@ from src.display.pixel import PixelTemplate
 from src.export.rtg_exporter import RtGExporter
 from src.rtg.format import load_pixel_template_from_file
 from src.rtg.uuid import reset_uuid_manager
+from main import generate_canvas_build
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,25 +30,18 @@ def generate_physical_canvas(width: int, height: int, output_dir: str):
 
 
 def read_generation(output_dir: Path):
-    display = json.loads((output_dir / "display.json").read_text(encoding="utf-8"))
-    info = json.loads((output_dir / "info.json").read_text(encoding="utf-8"))
-    return display, info
+    return json.loads((output_dir / "display.json").read_text(encoding="utf-8"))
 
 
 def assert_generation(output_dir: Path, width: int, height: int):
-    display, info = read_generation(output_dir)
-    display_info = info["display"]
+    display = read_generation(output_dir)
     expected_pixels = width * height
-    expected_blocks = 1 + expected_pixels * 21
-
-    assert display_info["width"] == width
-    assert display_info["height"] == height
-    assert display_info["total_pixels"] == expected_pixels
-    assert display_info["total_blocks"] == expected_blocks
     assert sum(block[0] == "Base" for block in display) == 1
     assert sum(block[0] == "Splitter_3" for block in display) == expected_pixels
+    assert len(display) >= 1 + expected_pixels
     assert not (output_dir / "animation.json").exists()
-    assert set(path.name for path in output_dir.iterdir()) == {"display.json", "info.json"}
+    assert not (output_dir / "info.json").exists()
+    assert set(path.name for path in output_dir.iterdir()) == {"display.json"}
 
 
 def test_repeated_physical_generations_stay_synchronized():
@@ -63,3 +57,16 @@ def test_repeated_physical_generations_stay_synchronized():
 
         generate_physical_canvas(2, 2, str(output_dir))
         assert_generation(output_dir, 2, 2)
+
+
+def test_generate_callback_returns_exact_display_json_for_copy():
+    with TemporaryDirectory() as temporary_directory:
+        result = generate_canvas_build({
+            "width": 5,
+            "height": 7,
+            "output_dir": temporary_directory,
+        })
+        generated_json = Path(result["display"]).read_text(encoding="utf-8")
+
+        assert result["json"] == generated_json
+        assert result["display"].endswith("display.json")

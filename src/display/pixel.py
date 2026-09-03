@@ -122,11 +122,41 @@ class PixelTemplate:
             return old_reference
         
         conn_type, point_id, parent_index = old_reference
+        if isinstance(point_id, str):
+            point_id = self._uuid_mapping.get(point_id, point_id)
         
         # Map the parent index to new location
         new_parent_index = index_mapping.get(parent_index, parent_index)
         
         return [conn_type, point_id, new_parent_index]
+
+    def _remap_value(self, value):
+        """Deep-remap UUID strings without changing the template structure."""
+        if isinstance(value, str):
+            return self._uuid_mapping.get(value, value)
+        if isinstance(value, list):
+            return [self._remap_value(item) for item in value]
+        if isinstance(value, dict):
+            return {
+                self._uuid_mapping.get(key, key): self._remap_value(item)
+                for key, item in value.items()
+            }
+        return value
+
+    def _find_template_uuids(self, value) -> List[str]:
+        """Find only valid UUID strings already present in template data."""
+        uuid_manager = get_uuid_manager()
+        if isinstance(value, str):
+            return [value] if uuid_manager.validate(value) else []
+        if isinstance(value, list):
+            return [uuid for item in value for uuid in self._find_template_uuids(item)]
+        if isinstance(value, dict):
+            return [
+                uuid
+                for key, item in value.items()
+                for uuid in self._find_template_uuids(key) + self._find_template_uuids(item)
+            ]
+        return []
     
     def _remap_ephemeral_attachments(
         self,
@@ -186,7 +216,19 @@ class PixelTemplate:
             for old_idx in range(len(self.template.blocks))
         }
         new_blocks = []
-        uuid_mapping = {}
+        self._uuid_mapping = {}
+        template_values = [
+            block.connections for block in self.template.blocks
+        ] + [
+            block.properties for block in self.template.blocks
+        ]
+        for original_uuid in {
+            uuid
+            for value in template_values
+            for uuid in self._find_template_uuids(value)
+        }:
+            self._uuid_mapping[original_uuid] = uuid_manager.generate_and_register()
+        uuid_mapping = self._uuid_mapping
         
         # Clone each block from template
         for old_idx, template_block in enumerate(self.template.blocks):
@@ -194,7 +236,7 @@ class PixelTemplate:
             new_block = RtGBlock(
                 template_block.block_type,
                 connections=[],  # Will be remapped
-                properties=deepcopy(template_block.properties)
+                properties=self._remap_value(deepcopy(template_block.properties))
             )
             
             # Remap all connections

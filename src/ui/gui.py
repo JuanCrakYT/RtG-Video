@@ -46,8 +46,9 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
-        self.root.geometry("700x790")
-        self.root.resizable(False, False)
+        self.root.geometry("760x700")
+        self.root.minsize(600, 700)
+        self.root.resizable(True, True)
         
         # Configure style
         self._configure_style()
@@ -57,6 +58,8 @@ class RtGDisplayGUI:
         self.on_video_loaded: Optional[Callable] = None
         self.on_settings_changed: Optional[Callable] = None
         self.on_generate: Optional[Callable] = None
+        self.generated_json: Optional[str] = None
+        self.generated_display_path: Optional[Path] = None
         self.preview_window: Optional[tk.Toplevel] = None
         self.preview_job = None
         self.preview_capture = None
@@ -155,12 +158,9 @@ class RtGDisplayGUI:
         
         # Video loading card
         self._build_video_card(main_frame)
-        
+
         # Settings card
         self._build_settings_card(main_frame)
-
-        # Color palette card
-        self._build_palette_card(main_frame)
         
         # Action buttons
         self._build_action_buttons(main_frame)
@@ -457,26 +457,10 @@ class RtGDisplayGUI:
         right_frame = tk.Frame(button_frame, bg=self.bg_primary)
         right_frame.pack(side=tk.RIGHT, fill=tk.X)
         
-        # Preview button
-        preview_btn = tk.Button(
-            right_frame,
-            text="👁️  Preview",
-            command=self._on_preview,
-            bg=self.border_color,
-            fg=self.text_primary,
-            font=('Segoe UI', 10),
-            padx=15,
-            pady=10,
-            border=0,
-            cursor='hand2',
-            activebackground='#D0D0D0'
-        )
-        preview_btn.pack(side=tk.LEFT, padx=(0, 10))
-        
         # Generate button
         generate_btn = tk.Button(
             right_frame,
-            text="✨ Generate RtG",
+            text="✨ Generate canvas",
             command=self._on_generate,
             bg=self.accent_color,
             fg='white',
@@ -798,17 +782,14 @@ class RtGDisplayGUI:
     
     def _on_copy(self):
         """Handle copy button."""
-        settings = self.get_settings()
-        if not settings['video']:
-            messagebox.showwarning("No Video", "Please load a video first")
+        if self.generated_json is None:
+            messagebox.showwarning("No canvas", "Generate a canvas first")
             return
         
-        # Copy settings to clipboard
         try:
             self.root.clipboard_clear()
-            clipboard_text = f"Video: {settings['video']}\nCanvas: {settings['width']}×{settings['height']}"
-            self.root.clipboard_append(clipboard_text)
-            messagebox.showinfo("Copied", "Settings copied to clipboard!")
+            self.root.clipboard_append(self.generated_json)
+            messagebox.showinfo("Copied", "display.json copied to clipboard!")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to copy: {e}")
     
@@ -820,6 +801,8 @@ class RtGDisplayGUI:
         if self.on_generate:
             try:
                 output_paths = self.on_generate(self.get_settings())
+                self.generated_json = output_paths.get('json')
+                self.generated_display_path = Path(output_paths['display'])
                 messagebox.showinfo(
                     "Generated",
                     f"Generated physical canvas {width}×{height}\n"

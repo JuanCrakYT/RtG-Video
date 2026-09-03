@@ -5,30 +5,58 @@
 > **Juego Objetivo:** Road To Gramby's (Roblox)  
 > **Versión de la Especificación:** v1.101  
 > **Estado:** Documento Experimental / No Oficial  
-> **Fecha de actualizacion:** 15/08/2026
+> **Fecha de actualización:** 15/08/2026
 
 ---
 
 ## 1. Introducción
-El presente documento constituye la especificación técnica no oficial del formato de guardado (*save format*) utilizado por el videojuego **Road To Gramby's (RtG)** en la plataforma Roblox. Toda la información contenida en este documento ha sido obtenida mediante **ingeniería inversa empírica**, analizando y modificando archivos JSON de construcciones (*builds*) e inspeccionando el comportamiento del motor del juego al procesarlos.
+El presente documento constituye la especificación técnica no oficial del formato de guardado (*save format*) utilizado por el videojuego **Road To Gramby's (RtG)** en la plataforma Roblox. Toda la información contenida en este documento ha sido obtenida mediante **ingeniería inversa empírica**, analizando y modificando archivos JSON comprimidos en Base64 de construcciones (*builds*) e inspeccionando el comportamiento del motor del juego al procesarlos.
 
 El propósito principal de esta especificación es documentar exhaustivamente el funcionamiento interno del sistema de serialización de objetos, la red de conexiones y dependencias jerárquicas, la inyección espacial de transformaciones mediante attachments y las reglas del cargador del juego.
 
 ### 1.1 Modelo conceptual del sistema
+#### Modelo en texto
 ```text
-                 BUILD
-                   │
-        ┌──────────┴──────────┐
-        │                     │
-     Objetos              Tabla UUID
-        │                     │
-        │                     │
-        ├── Tipo              │
-        ├── Conexiones        │
-        ├── Propiedades       │
-        └── Attachments ──────┘
-                  │
-               CFrame
+BUILD
+└── Objetos
+    ├── Tipo
+    ├── Conexiones
+    │   ├── TipoLocal
+    │   ├── PuntoPadre
+    │   │   └── Referencia A UUID
+    │   └── ÍndicePadre
+    │       └── Array 1-based
+    │
+    └── Propiedades
+        └── Attachments
+            ├── CFrame
+            └── UUID
+```
+
+#### Modelo en Formato Mermaid
+
+```mermaid
+flowchart TD
+flowchart TD
+    BUILD["BUILD"]
+
+    BUILD --> OBJ["Objetos"]
+
+    OBJ --> TYPE["Tipo"]
+    OBJ --> CONNECTIONS["Conexiones"]
+    OBJ --> PROPERTIES["Propiedades"]
+
+    CONNECTIONS --> LOCALTYPE["TipoLocal"]
+    CONNECTIONS --> PRIMARYID["PuntoPadre"]
+    CONNECTIONS --> PRIMARYINDEX["ÍndicePadre"]
+
+    PRIMARYINDEX --> PRIMARYINDEX1BASED["Array 1-based"]
+    PRIMARYID -. "Referencia a" .-> ATTACH["Attachment"]
+
+    PROPERTIES --> ATTACH
+
+    ATTACH --> CFRAME["CFrame"]
+    ATTACH --> UUID["UUID"]
 ```
 
 ---
@@ -62,157 +90,164 @@ Cada elemento del arreglo se define como una tupla con un tamaño fijo de tres e
 
 ```json
 [
-    TipoDelBloque,
+    TipoLocal,
     Conexiones,
     Propiedades
 ]
 ```
-
-| Índice Interno | Tipo de Dato | Nombre          | Descripción                                        |
-| :------------: | :----------: | :-------------- | :------------------------------------------------- |
-|      `0`       |   `String`   | `TipoDelBloque` | Identificador del tipo de objeto o entidad.        |
-|      `1`       |   `Array`    | `Conexiones`    | Arreglo de tuplas de conexión con el bloque padre. |
-|      `2`       |   `Object`   | `Propiedades`   | Diccionario JSON de atributos asociados al bloque. |
-
-* **Regla:** El orden de los 3 elementos dentro de la tupla `[TipoDelBloque, Conexiones, Propiedades]` es inmutable y validado por el parser universal.
-
-### 3.11 Tabla del Tipo De Bloque
-> **Hecho por:** @JuanCrakYT
-|   ID | Nombre            | TipoDelBloque | Descripción                                                  |
-| ---: | ----------------- | :-----------: | ------------------------------------------------------------ |
-|    1 | GoldPotatoEngine  |       1       | Motor de alta potencia. Variante mejorada del Potato Engine. |
-|    2 | TripWire          |       1       | Sensor mediante cable que detecta interrupciones.            |
-|    3 | ToolGun           |       —       | Herramienta especial. No posee conexiones propias.           |
-|    4 | Servo             |       1       | Servo rotacional configurable.                               |
-|    5 | Toilet            |       1       | Objeto decorativo/interactivo.                               |
-|    6 | Clipboard         |       1       | Portapapeles interactivo.                                    |
-|    7 | DoorB             |       1       | Variante B de puerta.                                        |
-|    8 | Rope              |       1       | Cable o cuerda que une dos referencias.                      |
-|    9 | Poop              |       1       | Objeto decorativo.                                           |
-|   10 | BeachChair        |       1       | Silla de playa.                                              |
-|   11 | Rocket            |       1       | Cohete propulsor.                                            |
-|   12 | EntitySensor      |       7       | Sensor de entidades cercanas.                                |
-|   13 | Board             |      15       | Tabla de madera.                                             |
-|   14 | PotatoEngine      |       1       | Motor básico del juego.                                      |
-|   15 | Joint             |       2       | Unión mecánica entre piezas.                                 |
-|   16 | RemoteButton      |       1       | Botón remoto.                                                |
-|   17 | Ramp              |       —       | Rampa. Utiliza únicamente EphemeralAttachments.              |
-|   18 | Lock              |       1       | Bloque de bloqueo.                                           |
-|   19 | Connector         |       5       | Conector esférico.                                           |
-|   20 | Tooth             |       —       | Diente. Solo utiliza EphemeralAttachments.                   |
-|   21 | Roof              |       1       | Techo.                                                       |
-|   22 | Switch            |       1       | Interruptor.                                                 |
-|   23 | Radio             |       1       | Radio configurable.                                          |
-|   24 | Leg               |       1       | Pierna mecánica.                                             |
-|   25 | Button            |       1       | Botón físico.                                                |
-|   26 | Trunk             |       1       | Baúl.                                                        |
-|   27 | Pie               |       1       | Pastel.                                                      |
-|   28 | CannonBall        |       1       | Munición de cañón.                                           |
-|   29 | Base              |       3       | Base estructural principal.                                  |
-|   30 | Leafblower        |       1       | Sopladora.                                                   |
-|   31 | Wing              |       1       | Ala aerodinámica.                                            |
-|   32 | Anchor            |       1       | Ancla.                                                       |
-|   33 | Grenade           |       1       | Granada.                                                     |
-|   34 | StaringGyro       |       1       | Giroscopio que sigue un objetivo.                            |
-|   35 | Servo_Physics     |       1       | Servo físico con simulación.                                 |
-|   36 | Briefcase         |       —       | Maletín. Sin datos de conexión.                              |
-|   37 | HalfConnectorBall |       6       | Medio conector esférico.                                     |
-|   38 | Gramby            |       1       | Personaje/NPC.                                               |
-|   39 | MountedGun        |       1       | Ametralladora montada.                                       |
-|   40 | Uzi               |       2       | Arma automática.                                             |
-|   41 | ConnectorBall     |       6       | Conector esférico.                                           |
-|   42 | ShoppingCart      |       —       | Carrito de compras.                                          |
-|   43 | Note              |       1       | Nota de texto.                                               |
-|   44 | Gate-AND          |       4       | Compuerta lógica AND.                                        |
-|   45 | Thruster          |       1       | Propulsor.                                                   |
-|   46 | BowlingBall       |       6       | Bola de bolos.                                               |
-|   47 | Cinderblock       |       1       | Bloque de concreto.                                          |
-|   48 | Joust             |       1       | Lanza/Joust.                                                 |
-|   49 | InputSensor       |       2       | Sensor de entrada.                                           |
-|   50 | Bumper            |       1       | Parachoques.                                                 |
-|   51 | DoorA             |       1       | Variante A de puerta.                                        |
-|   52 | Arm               |       1       | Brazo mecánico.                                              |
-|   53 | RPG               |       1       | Lanzacohetes.                                                |
-|   54 | Carrot            |       1       | Zanahoria.                                                   |
-|   55 | Cone              |       3       | Cono.                                                        |
-|   56 | SteeringWheel     |       1       | Volante.                                                     |
-|   57 | SteeringGyro      |       1       | Giroscopio de dirección.                                     |
-|   58 | Tire              |       1       | Llanta.                                                      |
-|   59 | Balloon           |       1       | Globo.                                                       |
-|   60 | Gyro              |       1       | Giroscopio.                                                  |
-|   61 | DoorC             |       1       | Variante C de puerta.                                        |
-|   62 | SpringJuice       |       1       | Consumible.                                                  |
-|   63 | WoodenChair       |       2       | Silla de madera.                                             |
-|   64 | Chassis           |       —       | Chasis. Solo utiliza EphemeralAttachments.                   |
-|   65 | FuelTank          |       2       | Tanque de combustible.                                       |
-|   66 | Mag               |       1       | Cargador de munición.                                        |
-|   67 | Keyboard          |       —       | Teclado. Solo utiliza EphemeralAttachments.                  |
-|   68 | RiotShield        |       —       | Escudo antidisturbios.                                       |
-|   69 | Spoiler           |       2       | Alerón.                                                      |
-|   70 | Jug               |       —       | Jarra.                                                       |
-|   71 | Pipes             |       1       | Tuberías.                                                    |
-|   72 | Trowel            |       —       | Paleta.                                                      |
-|   73 | LongStick         |       2       | Palo largo.                                                  |
-|   74 | ShortStick        |       2       | Palo corto.                                                  |
-|   75 | Stick             |       2       | Palo.                                                        |
-|   76 | Wire              |       3       | Cable eléctrico.                                             |
-|   77 | Gate-OR           |       4       | Compuerta lógica OR.                                         |
-|   78 | Hood              |       1       | Capó.                                                        |
-|   79 | Splitter_1        |       3       | Divisor de señal (1 salida principal).                       |
-|   80 | HulaDoll          |       1       | Muñeca decorativa.                                           |
-|   81 | Part              |       1       | Bloque estructural básico.                                   |
-|   82 | Camera            |       1       | Cámara.                                                      |
-|   83 | Light             |       1       | Luz.                                                         |
-|   84 | GlassBase         |       3       | Base de vidrio.                                              |
-|   85 | Sprite            |       1       | Imagen plana.                                                |
-|   86 | RubberBand        |       1       | Banda elástica.                                              |
-|   87 | Cannon            |       1       | Cañón.                                                       |
-|   88 | Shotgun           |       2       | Escopeta.                                                    |
-|   89 | Splitter_4        |       1       | Divisor de cuatro salidas.                                   |
-|   90 | Seat              |       1       | Asiento.                                                     |
-|   91 | Detacher          |       1       | Desconector.                                                 |
-|   92 | Plunger           |       1       | Destapador.                                                  |
-|   93 | Gate-NOT          |       4       | Compuerta lógica NOT.                                        |
-|   94 | FishBowl          |       1       | Pecera.                                                      |
-|   95 | Gun               |       2       | Pistola.                                                     |
-|   96 | BallSocket        |       1       | Articulación esférica.                                       |
-|   97 | Splitter_3        |       3       | Divisor de tres salidas.                                     |
-|   98 | Splitter_2        |       3       | Divisor de dos salidas.                                      |
-|   99 | Googie            |       1       | Objeto decorativo.                                           |
-|  100 | BeachBall         |       6       | Pelota de playa.                                             |
-|  101 | Canister          |       1       | Contenedor.                                                  |
-|  102 | Propeller         |       2       | Hélice.                                                      |
-|  103 | Sledge            |       1       | Mazo.                                                        |
-|  104 | Delayer           |       2       | Retardo lógico.                                              |
-|  105 | Looper            |       1       | Repetidor temporal.                                          |
-|  106 | wad               |       —       | Objeto auxiliar con EphemeralAttachments.                    |
-|  107 | BouncyBall        |       6       | Pelota rebotadora.                                           |
-|  108 | Recorder          |       1       | Grabadora.                                                   |
-|  109 | DoorD             |       1       | Variante D de puerta.                                        |
-|  110 | Piston            |       2       | Pistón configurable.                                         |
-|  111 | Bearing           |       1       | Rodamiento.                                                  |
-|  112 | VelocitySensor    |       2       | Sensor de velocidad.                                         |
-|  113 | SprayPaint        |       1       | Pintura en aerosol.                                          |
-|  114 | BrakeLight        |       1       | Luz de freno.                                                |
-|  115 | AltitudeSensor    |       2       | Sensor de altitud.                                           |
-|  116 | RockingChair      |       1       | Silla mecedora.                                              |
-|  117 | MatchingGyro      |       2       | Giroscopio de coincidencia.                                  |
-|  118 | Head              |       1       | Cabeza.                                                      |
-|  119 | PolaroidCamera    |       1       | Cámara Polaroid.                                             |
-|  120 | PolaroidPhoto     |       1       | Fotografía Polaroid.                                         |
-|  121 | Successor         |       2       | A Worthy Successor.                                          |
-|  122 | Body              |       —       | Cuerpo.                                                      |
-|  123 | Fricklet          |       —       | Fricklet.                                                    |
-|  124 | SuperPowerClock   |       —       | Super Power Clock.                                           |
-|  125 | YibYib            |       —       | YibYib.                                                      |
-
 ---
+| Índice Interno | Tipo de Dato | Nombre        | Descripción                                        |
+| :------------: | :----------: | :------------ | :------------------------------------------------- |
+|      `0`       |   `String`   | `TipoLocal`   | Identificador del tipo de objeto o entidad.        |
+|      `1`       |   `Array`    | `Conexiones`  | Arreglo de tuplas de conexión con el bloque padre. |
+|      `2`       |   `Object`   | `Propiedades` | Diccionario JSON de atributos asociados al bloque. |
+---
+* **Regla:** El orden de los 3 elementos dentro de la tupla `[TipoLocal, Conexiones, Propiedades]` es inmutable y validado por el parser universal.
+
+### 3.11 Tabla de TipoLocal por objeto
+> **Hecho por:** @JuanCrakYT
+Esta tabla registra el `TipoLocal` observado para cada tipo de objeto.
+Se ha observado que cada tipo de objeto utiliza un número `TipoLocal` determinado. Estos números permiten al formato identificar el tipo de objeto asociado a una conexión.
+El mecanismo interno mediante el cual RtG utiliza estos valores y el significado específico de cada número no se ha determinado.
+Por lo tanto, `TipoLocal` debe tratarse como un identificador observado, no como una clasificación semántica confirmada.
+---
+|   ID | Nombre            | TipoLocal | Descripción                                                  |
+| ---: | ----------------- | :-------: | ------------------------------------------------------------ |
+|    1 | GoldPotatoEngine  |     1     | Motor de alta potencia. Variante mejorada del Potato Engine. |
+|    2 | TripWire          |     1     | Sensor mediante cable que detecta interrupciones.            |
+|    3 | ToolGun           |     —     | Herramienta especial. No posee conexiones propias.           |
+|    4 | Servo             |     1     | Servo rotacional configurable.                               |
+|    5 | Toilet            |     1     | Objeto decorativo/interactivo.                               |
+|    6 | Clipboard         |     1     | Portapapeles interactivo.                                    |
+|    7 | DoorB             |     1     | Variante B de puerta.                                        |
+|    8 | Rope              |     1     | Cable o cuerda que une dos referencias.                      |
+|    9 | Poop              |     1     | Objeto decorativo.                                           |
+|   10 | BeachChair        |     1     | Silla de playa.                                              |
+|   11 | Rocket            |     1     | Cohete propulsor.                                            |
+|   12 | EntitySensor      |     7     | Sensor de entidades cercanas.                                |
+|   13 | Board             |    15     | Tabla de madera.                                             |
+|   14 | PotatoEngine      |     1     | Motor básico del juego.                                      |
+|   15 | Joint             |     2     | Unión mecánica entre piezas.                                 |
+|   16 | RemoteButton      |     1     | Botón remoto.                                                |
+|   17 | Ramp              |     —     | Rampa. Utiliza únicamente EphemeralAttachments.              |
+|   18 | Lock              |     1     | Bloque de bloqueo.                                           |
+|   19 | Connector         |     5     | Conector esférico.                                           |
+|   20 | Tooth             |     —     | Diente. Solo utiliza EphemeralAttachments.                   |
+|   21 | Roof              |     1     | Techo.                                                       |
+|   22 | Switch            |     1     | Interruptor.                                                 |
+|   23 | Radio             |     1     | Radio configurable.                                          |
+|   24 | Leg               |     1     | Pierna mecánica.                                             |
+|   25 | Button            |     1     | Botón físico.                                                |
+|   26 | Trunk             |     1     | Baúl.                                                        |
+|   27 | Pie               |     1     | Pastel.                                                      |
+|   28 | CannonBall        |     1     | Munición de cañón.                                           |
+|   29 | Base              |     3     | Base estructural principal.                                  |
+|   30 | Leafblower        |     1     | Sopladora.                                                   |
+|   31 | Wing              |     1     | Ala aerodinámica.                                            |
+|   32 | Anchor            |     1     | Ancla.                                                       |
+|   33 | Grenade           |     1     | Granada.                                                     |
+|   34 | StaringGyro       |     1     | Giroscopio que sigue un objetivo.                            |
+|   35 | Servo_Physics     |     1     | Servo físico con simulación.                                 |
+|   36 | Briefcase         |     —     | Maletín. Sin datos de conexión.                              |
+|   37 | HalfConnectorBall |     6     | Medio conector esférico.                                     |
+|   38 | Gramby            |     1     | Personaje/NPC.                                               |
+|   39 | MountedGun        |     1     | Ametralladora montada.                                       |
+|   40 | Uzi               |     2     | Arma automática.                                             |
+|   41 | ConnectorBall     |     6     | Conector esférico.                                           |
+|   42 | ShoppingCart      |     —     | Carrito de compras.                                          |
+|   43 | Note              |     1     | Nota de texto.                                               |
+|   44 | Gate-AND          |     4     | Compuerta lógica AND.                                        |
+|   45 | Thruster          |     1     | Propulsor.                                                   |
+|   46 | BowlingBall       |     6     | Bola de bolos.                                               |
+|   47 | Cinderblock       |     1     | Bloque de concreto.                                          |
+|   48 | Joust             |     1     | Lanza/Joust.                                                 |
+|   49 | InputSensor       |     2     | Sensor de entrada.                                           |
+|   50 | Bumper            |     1     | Parachoques.                                                 |
+|   51 | DoorA             |     1     | Variante A de puerta.                                        |
+|   52 | Arm               |     1     | Brazo mecánico.                                              |
+|   53 | RPG               |     1     | Lanzacohetes.                                                |
+|   54 | Carrot            |     1     | Zanahoria.                                                   |
+|   55 | Cone              |     3     | Cono.                                                        |
+|   56 | SteeringWheel     |     1     | Volante.                                                     |
+|   57 | SteeringGyro      |     1     | Giroscopio de dirección.                                     |
+|   58 | Tire              |     1     | Llanta.                                                      |
+|   59 | Balloon           |     1     | Globo.                                                       |
+|   60 | Gyro              |     1     | Giroscopio.                                                  |
+|   61 | DoorC             |     1     | Variante C de puerta.                                        |
+|   62 | SpringJuice       |     1     | Consumible.                                                  |
+|   63 | WoodenChair       |     2     | Silla de madera.                                             |
+|   64 | Chassis           |     —     | Chasis. Solo utiliza EphemeralAttachments.                   |
+|   65 | FuelTank          |     2     | Tanque de combustible.                                       |
+|   66 | Mag               |     1     | Cargador de munición.                                        |
+|   67 | Keyboard          |     —     | Teclado. Solo utiliza EphemeralAttachments.                  |
+|   68 | RiotShield        |     —     | Escudo antidisturbios.                                       |
+|   69 | Spoiler           |     2     | Alerón.                                                      |
+|   70 | Jug               |     —     | Jarra.                                                       |
+|   71 | Pipes             |     1     | Tuberías.                                                    |
+|   72 | Trowel            |     —     | Paleta.                                                      |
+|   73 | LongStick         |     2     | Palo largo.                                                  |
+|   74 | ShortStick        |     2     | Palo corto.                                                  |
+|   75 | Stick             |     2     | Palo.                                                        |
+|   76 | Wire              |     3     | Cable eléctrico.                                             |
+|   77 | Gate-OR           |     4     | Compuerta lógica OR.                                         |
+|   78 | Hood              |     1     | Capó.                                                        |
+|   79 | Splitter_1        |     3     | Divisor de señal (1 salida principal).                       |
+|   80 | HulaDoll          |     1     | Muñeca decorativa.                                           |
+|   81 | Part              |     1     | Bloque estructural básico.                                   |
+|   82 | Camera            |     1     | Cámara.                                                      |
+|   83 | Light             |     1     | Luz.                                                         |
+|   84 | GlassBase         |     3     | Base de vidrio.                                              |
+|   85 | Sprite            |     1     | Imagen plana.                                                |
+|   86 | RubberBand        |     1     | Banda elástica.                                              |
+|   87 | Cannon            |     1     | Cañón.                                                       |
+|   88 | Shotgun           |     2     | Escopeta.                                                    |
+|   89 | Splitter_4        |     1     | Divisor de cuatro salidas.                                   |
+|   90 | Seat              |     1     | Asiento.                                                     |
+|   91 | Detacher          |     1     | Desconector.                                                 |
+|   92 | Plunger           |     1     | Destapador.                                                  |
+|   93 | Gate-NOT          |     4     | Compuerta lógica NOT.                                        |
+|   94 | FishBowl          |     1     | Pecera.                                                      |
+|   95 | Gun               |     2     | Pistola.                                                     |
+|   96 | BallSocket        |     1     | Articulación esférica.                                       |
+|   97 | Splitter_3        |     3     | Divisor de tres salidas.                                     |
+|   98 | Splitter_2        |     3     | Divisor de dos salidas.                                      |
+|   99 | Googie            |     1     | Objeto decorativo.                                           |
+|  100 | BeachBall         |     6     | Pelota de playa.                                             |
+|  101 | Canister          |     1     | Contenedor.                                                  |
+|  102 | Propeller         |     2     | Hélice.                                                      |
+|  103 | Sledge            |     1     | Mazo.                                                        |
+|  104 | Delayer           |     2     | Retardo lógico.                                              |
+|  105 | Looper            |     1     | Repetidor temporal.                                          |
+|  106 | wad               |     —     | Objeto auxiliar con EphemeralAttachments.                    |
+|  107 | BouncyBall        |     6     | Pelota rebotadora.                                           |
+|  108 | Recorder          |     1     | Grabadora.                                                   |
+|  109 | DoorD             |     1     | Variante D de puerta.                                        |
+|  110 | Piston            |     2     | Pistón configurable.                                         |
+|  111 | Bearing           |     1     | Rodamiento.                                                  |
+|  112 | VelocitySensor    |     2     | Sensor de velocidad.                                         |
+|  113 | SprayPaint        |     1     | Pintura en aerosol.                                          |
+|  114 | BrakeLight        |     1     | Luz de freno.                                                |
+|  115 | AltitudeSensor    |     2     | Sensor de altitud.                                           |
+|  116 | RockingChair      |     1     | Silla mecedora.                                              |
+|  117 | MatchingGyro      |     2     | Giroscopio de coincidencia.                                  |
+|  118 | Head              |     1     | Cabeza de Fricklet.                                          |
+|  119 | PolaroidCamera    |     1     | Cámara Polaroid.                                             |
+|  120 | PolaroidPhoto     |     1     | Fotografía Polaroid.                                         |
+|  121 | Successor         |     2     | A Worthy Successor.                                          |
+|  122 | Body              |     —     | Cuerpo de Fricklet.                                          |
+|  123 | Fricklet          |     —     | Fricklet.                                                    |
+|  124 | SuperPowerClock   |     —     | Super Power Clock.                                           |
+|  125 | YibYib            |     —     | YibYib.                                                      |
+---
+
+> **Importante:** Aquí aparecen algunos objetos con "—" en `TipoLocal`, y esas entradas se describen como *objetos que no pueden conectarse a otros.*
+> **Nota:** Conocer el `TipoLocal` de un objeto no implica conocer qué representa internamente ese número.
 
 ## 4. Modelo de datos de objetos
 > **Hecho por:** @JuanCrakYT
 Todos los objetos dentro del formato de guardado de RtG comparten exactamente la misma estructura base JSON:
 
-$$\text{Objeto RtG} = [\text{TipoDelBloque}, \text{Conexiones}, \text{Propiedades}]$$
+$$\text{Objeto RtG} = [\text{TipoLocal}, \text{Conexiones}, \text{Propiedades}]$$
 
 Sin embargo, cada tipo de objeto posee comportamientos internos y reglas de procesamiento diferenciadas en la lógica del juego.
 
@@ -225,6 +260,15 @@ Sin embargo, cada tipo de objeto posee comportamientos internos y reglas de proc
      Part                  Servo                 Sprite
 (Interpreta RGB)    (Interpreta Speed,   (Interpreta ImageId,
                       Rotation, Rest)       UUID Attachment)
+```
+> Aquí se ve en formato **Mermaid:**
+```mermaid
+flowchart TD
+    PARSER["Parser Universal (JSON)"]
+
+    PARSER --> PART["Part<br/>(Interpreta RGB)"]
+    PARSER --> SERVO["Servo<br/>(Interpreta Speed, Rotation, Rest)"]
+    PARSER --> SPRITE["Sprite<br/>(Interpreta ImageId, UUID Attachment)"]
 ```
 
 ### 4.1 Interpretación Homogénea vs. Procesamiento Específico
@@ -247,7 +291,11 @@ Ejemplos de identificadores de bloques observados en las pruebas:
 * `"Wheel"`
 * `"Chassis"`
 * `"Sprite"`
-* `"Rope"`, `"Wire"`, `"Balloon"`, `"Joint"`, `"RiotShield"`
+* `"Rope"`
+* `"Wire"`
+* `"Balloon"`
+* `"Joint"`
+* `"RiotShield"`
 > Para ver más, vaya a: `obj_ids.md`
 
 ### 5.2 Homogeneidad y Ausencia de Bloques Especiales
@@ -287,17 +335,19 @@ Cada entrada en la lista de conexiones consta exactamente de un arreglo de 3 ele
 [
     TipoLocal,
     PuntoPadre,
-    ÍndicePadre
+    ÍndicePadre    // 1-based
 ]
 ```
 
 | Posición |   Tipo de Dato    | Componente    | Descripción                                                  |    Estado    |
 | :------: | :---------------: | :------------ | :----------------------------------------------------------- | :----------: |
 |    1º    |     `String`      | `TipoLocal`   | Identificador de interfaz/puerto del bloque local.           | ✅ Confirmado |
-|    2º    | `String` / `UUID` | `PuntoPadre`  | Punto físico o UUID del attachment de enlace del padre.      |  🟢 Probable  |
+|    2º    | `String` / `UUID` | `PuntoPadre`  | Punto físico o UUID del attachment de enlace del padre.      | ✅ Confirmado |
 |    3º    |     `Integer`     | `ÍndicePadre` | Índice de posición del bloque padre en el arreglo principal. | ✅ Confirmado |
 
 ---
+
+> **Nota sobre `TipoLocal`:** Cada tipo de objeto observado utiliza un `TipoLocal` propio. Se desconoce el significado interno de estos números y el mecanismo exacto mediante el cual RtG los utiliza. Por ahora, se tratan como identificadores observados asociados a tipos de objeto.
 
 ## 7. Índices y referencias
 
@@ -309,15 +359,25 @@ Ejemplo:
 ```json
 [
     ["Base", [], {}],
-    ["Part", [["1", "5", 0]], {}],
-    ["Part", [["1", "5", 1]], {}]
+    ["Part", [["1", "5", 1]], {}],
+    ["Part", [["1", "5", 2]], {}]
 ]
 ```
-En la estructura anterior, el segundo `Part` apunta al índice `1` (el primer `Part`), generando la siguiente topología de árbol:
+En la estructura anterior, el segundo `Part` apunta al índice `2` (el primer `Part`), generando la siguiente topología de árbol:
 ```tree
-Base (Índice 0)
- └── Part (Índice 1)
-      └── Part (Índice 2)
+Base (Índice 1)
+ └── Part (Índice 2)
+      └── Part (Índice 3)
+```
+> Aquí se ve en formato **Mermaid:**
+```mermaid
+flowchart TD
+    BASE["Base<br/>Índice 1"]
+    PART2["Part<br/>Índice 2"]
+    PART3["Part<br/>Índice 3"]
+
+    BASE --> PART2
+    PART2 --> PART3
 ```
 
 ### 7.2 Importancia del Orden del Arreglo (✅ Confirmado)
@@ -334,13 +394,33 @@ El formato de guardado de RtG **no almacena coordenadas 3D absolutas para los bl
 
 ---
 
-## 8. TipoLocal (✅ Confirmado)
+## 8. TipoLocal (✅ Identificado / significado interno desconocido)
 
-El primer valor dentro de la tupla de conexión (`TipoLocal`) define el tipo de puerto o contrato de interfaz utilizado por el bloque local.
+El primer valor dentro de la tupla de conexión (`TipoLocal`) es un número utilizado por RtG para identificar el tipo de objeto local asociado a la conexión.
+Se ha observado que cada tipo de objeto utiliza un `TipoLocal` determinado, a excepción de algunos que **NO tienen `TipoLocal`**.
+```md
+Chassis
+Ramp
+Tooth
+etc...
+```
+Por ejemplo, la tabla de tipos de objeto registra valores como:
 
-### 8.1 Comportamiento y Validación Estricta
-* **Naturaleza Lógica:** No representa un número de cara física del bloque. Es un identificador del canal o tipo de acoplamiento mecánico/lógico.
-* **Validación Crítica:** El cargador de RtG valida este campo de manera estricta durante la Fase de Validación Inicial. Modificar este valor por uno no compatible con el objeto produce un rechazo inmediato de la construcción (`"Build inválida"`), impidiendo el renderizado de cualquier bloque.
+- `Part` → `1`
+- `Servo` → `1`
+- `Connector` → `5`
+- `InputSensor` → `2`
+- `Gate-AND` → `4`
+
+El valor permite asociar la conexión con el tipo de objeto correspondiente.
+
+Sin embargo, el significado interno exacto de estos números y el mecanismo mediante el cual el juego los utiliza todavía no han sido determinados.
+
+### 8.1 Comportamiento observado
+
+El `TipoLocal` no debe interpretarse como el ID de un punto de conexión.
+Los puntos de conexión se identifican mediante `PuntoPadre`; `TipoLocal` identifica el tipo de objeto asociado a la conexión.
+El cagador parece utilizar este valor durante el procesamiento de las conexiones, pero su mecanismo interno exacto no ha sido determinado.
 
 ### 8.2 Tabla de TiposLocal Observados
 
@@ -357,12 +437,12 @@ El primer valor dentro de la tupla de conexión (`TipoLocal`) define el tipo de 
 
 ---
 
-## 9. Puntos de conexión (🟢 Probable)
+## 9. Puntos de conexión (✅ Confirmado)
 
 El segundo elemento de la tupla de conexión (`PuntoPadre`) determina el punto físico exacto en el bloque padre donde el objeto hijo se acopla.
 
 ### 9.1 Mapeo de Nodos Físicos
-* `PuntoPadre` no contiene coordenadas cartesianas, sino identificadores numéricos en cadena (ej. `"1"`, `"2"`, `"5"`) o identificadores UUID cuando se vincula a un attachment.
+* `PuntoPadre` no contiene coordenadas cartesianas, sino identificadores numéricos en cadena 1-based (ej. `"1"`, `"2"`, `"5"`) o identificadores UUID cuando se vincula a un attachment.
 * Representa un nodo espacial prefijado en la malla/geometría del bloque padre.
 
 Diagrama esquemático conceptual de nodos en un bloque tipo `Base`:
@@ -396,6 +476,17 @@ A diferencia de esquemas rígidos o cerrados, el parser de RtG acepta cualquier 
 
 No existen restricciones sintácticas que impidan almacenar claves adicionales. Por ejemplo, se ha probado experimentalmente que incluir la clave `"RGB"` dentro de un objeto `Servo` no corrompe la lectura del archivo JSON ni genera un error de sintaxis en el cargador.
 
+> **Dato importante:** Al cargar un objeto con propiedades, estas propiedades, se mantienen en el objeto aunque no se usen.
+```json
+[["Gyro",[],{"DatoInventado":false,"Activated":true,"RGB":[73,26,112]}]]
+[["Gyro",[],{"Activated":true,"DatoInventado":false,"RGB":[73,26,112]}]]
+```
+>> Si faltan propiedades de un objeto, RtG las creara automáticamente si se requiere en un **valor vacío** o **predeterminado**.
+```json
+[["Gyro",[],[]]]
+[["Gyro",[],{"Activated":true,"RGB":[73,26,112]}]]
+```
+
 ### 10.2 Clasificación Tridimensional de Propiedades
 Para analizar con rigor el comportamiento del motor, la especificación distingue tres estados para cualquier propiedad incluida en el JSON:
 
@@ -408,6 +499,15 @@ Para analizar con rigor el comportamiento del motor, la especificación distingu
   (Existe en el    (Procesada por     (Ignorada por
  archivo JSON)    la lógica)        el motor)
 ```
+> Aquí se ve en formato **Mermaid:**
+```mermaid
+flowchart TD
+    PROP["Propiedad en el JSON"]
+
+    PROP --> STORED["Almacenada<br/>(Existe en el archivo JSON)"]
+    PROP --> INTERPRETED["Interpretada<br/>(Procesada por la lógica)"]
+    PROP --> IGNORED["Ignorada<br/>(Ignorada por el motor)"]
+```
 
 1. **Propiedad Almacenada:** Cualquier par clave-valor guardado explícitamente en el archivo JSON.
 2. **Propiedad Interpretada:** Una clave leída y utilizada activamente por el código del objeto específico para alterar su comportamiento o apariencia (ej. `"RGB"` en `Part`, `"Speed"` en `Servo`).
@@ -415,14 +515,15 @@ Para analizar con rigor el comportamiento del motor, la especificación distingu
 
 ### 10.3 Ejemplos de Propiedades Observadas
 
-#### Coloración General (`RGB`)
+#### Universal
+##### Coloración General (`RGB`)
 ```json
 {
     "RGB": [255, 0, 0]
 }
 ```
 
-#### Transformación de Orientación (`Orientation`)
+##### Transformación de Orientación (`Orientation`)
 ```json
 {
     "OrientationX": 90,
@@ -431,7 +532,8 @@ Para analizar con rigor el comportamiento del motor, la especificación distingu
 }
 ```
 
-#### Parámetros de Servomotores (`Servo`)
+#### Objetos específicos
+##### Parámetros de Servomotores (`Servo`)
 ```json
 {
     "Rotation": 0,
@@ -444,7 +546,7 @@ Para analizar con rigor el comportamiento del motor, la especificación distingu
 }
 ```
 
-#### Sensores e Interruptores
+##### Sensores e Interruptores
 ```json
 {
     "ActivationKey": "W",
@@ -464,7 +566,7 @@ Las pruebas de ingeniería inversa han confirmado que **todos los objetos dentro
 
 > **Definición:** `EphemeralAttachments` no es una propiedad exclusiva ni reservada para clases específicas de bloques. Cualquier objeto puede albergar un diccionario de attachments en su sección de propiedades.
 
-El objeto `"Chassis"` fue el primer caso utilizado durante las pruebas iniciales para aislar esta estructura, pero se ha comprobado que bloques estándar como `"Part"` pueden alojar exactamente los mismos diccionarios de attachments con identico comportamiento.
+El objeto `"Chassis"` fue el primer caso utilizado durante las pruebas iniciales para aislar esta estructura, pero se ha comprobado que bloques estándar como `"Part"` pueden alojar exactamente los mismos diccionarios de attachments con idéntico comportamiento.
 
 ### 11.2 Formato y Estructura
 `EphemeralAttachments` se almacena dentro del diccionario abierto de propiedades de un objeto:
@@ -485,11 +587,11 @@ El objeto `"Chassis"` fue el primer caso utilizado durante las pruebas iniciales
 }
 ```
 
-| Campo      | Tipo de Dato | Descripción                                                                   |
-| :--------- | :----------: | :---------------------------------------------------------------------------- |
-| `UUID`     |   `String`   | Clave UUID única (`{GUID}`) que identifica la entrada de attachment.          |
-| `partName` |   `String`   | Nombre de la pieza o entidad host del attachment (ej. `"Part"`, `"Chassis"`). |
-| `cframe`   | `Array[12]`  | Arreglo numérico de 12 elementos con la transformación tridimensional.        |
+| Campo      | Tipo de Dato | Descripción                                                                                                                                                                                                            |
+| :--------- | :----------: | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `UUID`     |   `String`   | Clave UUID única (`{GUID}`) que identifica la entrada de attachment.                                                                                                                                                   |
+| `partName` |   `String`   | Nombre de la pieza o entidad host del attachment (ej. `"Part"`, `"Chassis"`).                                                                                                                                          |
+| `cframe`   | `Array[12]`  | El `cframe` del `EphemeralAttachment` contiene la transformación relativa al sistema de coordenadas del objeto host, proporcionando la posición y orientación necesarias para reconstruir la ubicación de la conexión. |
 
 ---
 
@@ -515,6 +617,18 @@ Grafo de vinculación observada:
          │  Lectura de arreglo cframe
          ▼
 [ Transformación Espacial (CFrame) ]
+```
+> Aquí se ve en formato **Mermaid:**
+```mermaid
+flowchart TD
+    OBJECT["Objeto Vinculado<br/>(ej. Sprite)"]
+    UUID["UUID Lookup Key"]
+    ATTACH["EphemeralAttachment<br/>en Objeto Host"]
+    CFRAME["Transformación Espacial<br/>(CFrame)"]
+
+    OBJECT -->|"Referencia de conexión:<br/>[&quot;1&quot;, &quot;{UUID}&quot;, 1]"| UUID
+    UUID -->|"Coincidencia de clave única"| ATTACH
+    ATTACH -->|"Lectura de arreglo cframe"| CFRAME
 ```
 
 Ejemplo JSON de objeto enlazado (`Sprite`):
@@ -629,7 +743,30 @@ Existe una marcada asimetría entre el **Constructor Visual del Juego (UI Editor
           Fase 6: Reconstrucción Física y Geométrica
         (Posicionamiento final e inicio del solver)
 ```
+> Aquí se ve en formato **Mermaid:**
+```mermaid
+flowchart TD
+    START["Inicio:<br/>Lectura del archivo JSON"]
 
+    P1["Fase 1: Validación Estructural<br/>Sintaxis JSON, Tuplas, Cadenas TipoLocal"]
+
+    P2["Fase 2: Instanciación de Entidades<br/>Creación en memoria de todos los objetos"]
+
+    P3["Fase 3: Resolución de Grafo de Índices<br/>Conexión de jerarquías padre-hijo"]
+
+    P4["Fase 4: Enlace UUID & Attachments<br/>Indexación de EphemeralAttachments y CFrame"]
+
+    P5["Fase 5: Aplicación de Propiedades<br/>Carga de claves reconocidas; ignora claves desconocidas"]
+
+    P6["Fase 6: Reconstrucción Física y Geométrica<br/>Posicionamiento final e inicio del solver"]
+
+    START --> P1
+    P1 --> P2
+    P2 --> P3
+    P3 --> P4
+    P4 --> P5
+    P5 --> P6
+```
 ---
 
 ## 15. Validación y errores
@@ -709,32 +846,29 @@ W1siU3ByYXlQYWludCIsW10seyJSR0IiOlsyMTEsMjcsMTldfV1d
 
 ## 17. Descubrimientos confirmados (✅)
 > **Hecho por:** @JuanCrakYT
-1. ✅ **Estructura Raíz:** El archivo de guardado es un arreglo JSON donde cada bloque es una tupla de 3 elementos: `[TipoDelBloque, Conexiones, Propiedades]`.
+1. ✅ **Estructura Raíz:** El archivo de guardado es un arreglo JSON donde cada bloque es una tupla de 3 elementos: `[TipoLocal, Conexiones, Propiedades]`.
+2. ✅ **PuntoPadre como Nodo Físico Mapeado:** El segundo valor de la tupla de conexión (`PuntoPadre`) puede representar un identificador numérico de un punto de conexión predefinido del objeto padre o un UUID que referencia un `EphemeralAttachment` del objeto padre.
 2. ✅ **Diccionario Abierto de Propiedades:** El objeto `Propiedades` acepta cualquier número de claves adicionadas sin generar errores sintácticos de carga.
-3. ✅ **Significado del Tercer Dato de Conexión:** El tercer valor en cada tupla de conexión representa estrictamente el índice del bloque padre en el arreglo principal.
-4. ✅ **Validación Estricta de TipoLocal:** El primer valor de la conexión (`TipoLocal`) identifica el tipo de interfaz y es validado rigurosamente por el cargador. Un valor no compatible genera `"Build inválida"`.
-5. ✅ **Sensibilidad al Orden del Arreglo:** Cambiar el orden de los objetos en el arreglo rompe la indexación jerárquica y corrompe la construcción.
-6. ✅ **Inexistencia de Coordenadas Absolutas Estándar:** El formato no guarda coordenadas globales $X,Y,Z$ para bloques convencionales; la geometría final se calcula recursivamente a partir del bloque padre.
-7. ✅ **Universalidad Host de EphemeralAttachments:** Todos los objetos en el formato poseen la capacidad de actuar como host de un diccionario `EphemeralAttachments`.
-8. ✅ **Mecanismo de Enlace UUID:** Los UUIDs funcionan exclusivamente como identificadores/punteros de enlace interno entre objetos y sus attachments.
-9. ✅ **Compatibilidad con UUIDs Sintéticos:** El cargador procesa UUIDs personalizados creados arbitrariamente, siempre que mantengan un formato válido de GUID.
-10. ✅ **Requisito de Existencia de Referencias:** Las referencias jerárquicas y de UUID son obligatorias. Si una referencia no existe, la carga falla (no se autorrepara).
-11. ✅ **Comportamiento de Sprite Invisible:** Proporcionar un `ImageId` inválido o inexistente resulta en la creación de un `Sprite` invisible pero físicamente presente en el árbol.
-
+4. ✅ **Significado del Tercer Dato de Conexión:** El tercer valor en cada tupla de conexión representa estrictamente el índice del bloque padre en el arreglo principal.
+5. ✅ **Validación Estricta de TipoLocal:** El primer valor de la conexión (`TipoLocal`) identifica el tipo de objeto local de la conexión. El juego utiliza este valor para identificar/buscar el tipo de objeto; el mecanismo interno exacto del lookup no ha sido determinado. Es validado rigurosamente por el cargador. Un valor no compatible genera `"Build inválida"`.
+6. ✅ **Sensibilidad al Orden del Arreglo:** Cambiar el orden de los objetos en el arreglo rompe la indexación jerárquica y corrompe la construcción.
+7. ✅ **Inexistencia de Coordenadas Absolutas Estándar:** El formato no guarda coordenadas globales $X,Y,Z$ para bloques convencionales; la geometría final se calcula recursivamente a partir del bloque padre.
+8. ✅ **Universalidad Host de EphemeralAttachments:** Todos los objetos en el formato poseen la capacidad de actuar como host de un diccionario `EphemeralAttachments`.
+9. ✅ **Mecanismo de Enlace UUID:** Los UUIDs funcionan exclusivamente como identificadores/punteros de enlace interno entre objetos y sus attachments.
+10. ✅ **Compatibilidad con UUIDs Sintéticos:** El cargador procesa UUIDs personalizados creados arbitrariamente, siempre que mantengan un formato válido de GUID.
+11. ✅ **Requisito de Existencia de Referencias:** Las referencias jerárquicas y de UUID son obligatorias. Si una referencia no existe, la carga falla (no se autorrepara).
+12. ✅ **Comportamiento de Sprite Invisible:** Proporcionar un `ImageId` inválido o inexistente resulta en la creación de un `Sprite` invisible pero físicamente presente en el árbol.
 ---
 
 ## 18. Hipótesis actuales (🟢)
-
-1. 🟢 **PuntoPadre como Nodo Físico Mapeado:** El segundo valor en la tupla de conexión (`PuntoPadre`) representa un identificador numérico de nodo de acoplamiento prefijado en el modelo geométrico del padre.
-2. 🟢 **Transformación Plana en Sprites:** Los objetos tipo `Sprite` filtran la matriz de orientación de 9 elementos para aplicar únicamente transformaciones bidimensionales (escalado/rotación en el plano 2D) en lugar de inclinación tridimensional completa.
-3. 🟢 **Secuencia de Fases del Cargador:** El cargador opera mediante un pipeline multietapa (Validación estructural $\to$ Instanciación $\to$ Enlace de Índices $\to$ Enlace UUID/Attachments $\to$ Propiedades $\to$ Reconstrucción Física).
-
+1. 🟢 **Transformación Plana en Sprites:** Los objetos tipo `Sprite` filtran la matriz de orientación de 9 elementos para aplicar únicamente transformaciones bidimensionales (escalado/rotación en el plano 2D) en lugar de inclinación tridimensional completa.
+2. 🟢 **Secuencia de Fases del Cargador:** El cargador opera mediante un pipeline multietapa (Validación estructural $\to$ Instanciación $\to$ Enlace de Índices $\to$ Enlace UUID/Attachments $\to$ Propiedades $\to$ Reconstrucción Física).
 
 ---
 
 ## 19. Catálogo de objetos y propiedades (Espacio reservado)
 
-Esta sección queda estructurada como espacio reservado para albergar las tablas técnicas detalladas de los 120 objetos disponibles en Road To Gramby's en revisiones posteriores del documento.
+Esta sección queda estructurada como espacio reservado para albergar las tablas técnicas detalladas de los 125 objetos disponibles en Road To Gramby's en revisiones posteriores del documento.
 
 ### 19.1 Plantilla de Catálogo Técnico
 
@@ -745,7 +879,7 @@ Esta sección queda estructurada como espacio reservado para albergar las tablas
 | *Ej. Sprite*        | `"1"`               | `{UUID}`                                 | `ImageId`                                 | Compatible (Host/Referenciador) |
 | *[Objeto 004]*      |                     |                                          |                                           |                                 |
 | *[Objeto 005]*      |                     |                                          |                                           |                                 |
-| *[... 120 objetos]* |                     |                                          |                                           |                                 |
+| *[... 125 objetos]* |                     |                                          |                                           |                                 |
 
 ---
 
@@ -753,16 +887,13 @@ Esta sección queda estructurada como espacio reservado para albergar las tablas
 > **Hecho por:** @JuanCrakYT
 Las siguientes líneas de investigación han sido identificadas para guiar el desarrollo de las próximas versiones de esta especificación técnica:
 
-* ❓ **Mapa completo de puntos de conexión:** Cartografiar y documentar la totalidad de nodos de conexión (`PuntoPadre`) para los 120 objetos del juego.
-* ❓ **Catálogo de propiedades observadas por objeto:** Documentar formalmente qué propiedades son interpretadas activamente por cada uno de los 120 objetos.
-* ❓ **Matriz de compatibilidad de TipoLocal:** Determinar los códigos de `TipoLocal` aceptados por cada tipo de bloque.
-* ❓ **Múltiples EphemeralAttachments:** Investigar la estabilidad y comportamiento del motor cuando un solo objeto hospeda múltiples entradas de attachments o cuando múltiples objetos referencian un mismo attachment.
+* ❓ **Mapa completo de puntos de conexión:** Cartografiar y documentar la totalidad de nodos de conexión (`PuntoPadre`) para los 125 objetos del juego.
+* ❓ **Catálogo de propiedades observadas por objeto:** Documentar formalmente qué propiedades son interpretadas activamente por cada uno de los 125 objetos.
 * ❓ **Generación automática de builds:** Desarrollar algoritmos de serialización programática para construir archivos JSON válidos compatibles con el cargador de RtG.
-
-
 
 ## Catalogo de Propiedades
 > **Hecho por:** @JuanCrakYT
+---
 | Propiedad              | Tipo de dato         | Primer objeto observado |
 | ---------------------- | -------------------- | ----------------------- |
 | `RGB`                  | `Color3` (`[R,G,B]`) | `Rope`                  |
@@ -798,10 +929,11 @@ Las siguientes líneas de investigación han sido identificadas para guiar el de
 | `CustomTrack`          | `String`             | `Radio`                 |
 | `On`                   | `Boolean`            | `Radio`                 |
 | `Phrase`               | `String`             | `PolaroidPhoto`         |
+---
 
 ## Total
 
-**32 propiedades únicas.**
+**33 propiedades únicas.**
 
 ### Se pueden agrupar así:
 
@@ -852,6 +984,7 @@ Las siguientes líneas de investigación han sido identificadas para guiar el de
 * Volume
 * CustomTrack
 * On
+* Phrase
 
 **Inventario / Otros**
 

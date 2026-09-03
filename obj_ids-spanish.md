@@ -8,22 +8,29 @@
 
 # Catálogo de IDs de Puntos de Conexión
 > **Hecho por:** @JuanCrakYT
-Este documento cataloga el significado del **IDdelPunto** de las conexiones de cada objeto.
+Este documento cataloga el significado del **PuntoPadre** de las conexiones de cada objeto.
 
 Formato de una conexión:
-
-["TipoDelBloque", "IDdelPunto", ÍndicePadre]
-
+```json
+["TipoLocal", "PuntoPadre", ÍndicePadre]
+```
 Ejemplo:
-
+```json
 ["1", "24", 15]
-
+```
 donde:
 
-- TipoDelBloque = Categoría de conexión.
-- IDdelPunto = ID del punto de conexión del objeto padre.
+- TipoLocal = Número utilizado por RtG para identificar el tipo de objeto local de la conexión.
+- PuntoPadre = ID del punto de conexión del objeto padre.
 - ÍndicePadre = Índice del objeto al que está conectado.
-
+> **Nota:** Se ha observado que cada tipo de objeto utiliza un `TipoLocal` determinado, a excepción de algunos que **NO tienen `TipoLocal`**.
+```md
+Chassis
+Ramp
+Tooth
+etc...
+``` 
+> **Aviso:** Se desconoce el significado interno exacto de estos números y cómo los utiliza el juego.
 ---
 
 ## Objetivo
@@ -62,6 +69,14 @@ Ejemplo:
 
 #### ID
 Número utilizado por RtG para identificar un punto de conexión.
+
+#### TipoLocal
+
+Número utilizado por RtG para identificar el tipo de objeto local asociado a una conexión.
+
+Cada tipo de objeto observado tiene un `TipoLocal` determinado.
+
+El significado interno de estos números y el mecanismo exacto mediante el cual el juego los utiliza no han sido determinados.
 
 #### Nombre
 Nombre descriptivo del punto de conexión.
@@ -217,42 +232,43 @@ Cuando existan objetos simétricos (ruedas, luces, asientos, etc.), utilizar col
 88. Servo_Physics
 89. ShortStick
 90. ShoppingCart
-92. Shotgun
-93. Sledge
-94. SprayPaint
-95. Sprite
-96. Spoiler
-97. SpringJuice
-98. Splitter_1
-99.  Splitter_2
-100. Splitter_3
-101. Splitter_4
-102. StaringGyro
-103. SteeringGyro
-104. SteeringWheel
-105. Stick
-106. Switch
-107. Thruster
-108. Tire
-109. Toilet
-110. ToolGun
-111. Tooth
-112. TripWire
-113. Trunk
-114. Uzi
-115. VelocitySensor
-116. Wheel
-117. Wire
-118. WoodenChair
-119. Wad
-120. Head
-121. Body
-122. Fricklet
-123. SuperPowerClock
-124. YibYib
+91. Shotgun
+92. Sledge
+93. SprayPaint
+94. Sprite
+95. Spoiler
+96. SpringJuice
+97. Splitter_1
+98.  Splitter_2
+99.  Splitter_3
+100. Splitter_4
+101. StaringGyro
+102. SteeringGyro
+103. SteeringWheel
+104. Stick
+105. Switch
+106. Thruster
+107. Tire
+108. Toilet
+109. ToolGun
+110. Tooth
+111. TripWire
+112. Trunk
+113. Uzi
+114. VelocitySensor
+115. Wheel
+116. Wire
+117. WoodenChair
+118. Wad
+119. Head
+120. Body
+121. Fricklet
+122. SuperPowerClock
+123. YibYib
+---
 
 ## Objetos con puntos de conexión propios
-> Aquí encontraras el "IDdelPunto" de cada objeto
+> Aquí encontraras el "PuntoPadre" de cada objeto
 > **Hecho por:** @JuanCrakYT
 
 ### 1. Chassis
@@ -302,9 +318,9 @@ Cantidad de IDs encontrados: 1
 
 Cantidad de IDs encontrados: 1
 
-| ID  | Nombre     | Lado   | Descripción                                  |
-| --- | ---------- | ------ | -------------------------------------------- |
-| 1   | WheelMount | Center | Punto de conexión de la llanta con la rueda. |
+| ID  | Nombre     | Lado   | Descripción                                                 |
+| --- | ---------- | ------ | ----------------------------------------------------------- |
+| 1   | WheelMount | Center | Punto de conexión de la llanta con una rueda u otro objeto. |
 
 ---
 
@@ -404,13 +420,9 @@ Cantidad de IDs encontrados: 1
 
 ---
 
-### 14. Tire
+### ???
 
-Cantidad de IDs encontrados: 1
-
-| ID  | Nombre     | Lado   | Descripción                                                       |
-| --- | ---------- | ------ | ----------------------------------------------------------------- |
-| 1   | WheelMount | Center | Punto de conexión de la llanta con una rueda u objeto compatible. |
+Cantidad de IDs encontrados: ???
 
 ---
 
@@ -424,7 +436,7 @@ Cantidad de IDs encontrados: 1
 
 ---
 
-### 27. Leg
+### 16. Leg
 
 Cantidad de IDs encontrados: 1
 
@@ -571,7 +583,7 @@ Cantidad de IDs encontrados: 3
 >> El ID 2 parece ser el punto funcional principal, ya que está asociado al eje que gira.
 >> Los IDs 3 y 4 parecen ser puntos de montaje opuestos, similares a los del `Piston`.
 
-### 29. Servo_Physics
+### 30. Servo_Physics
 
 Cantidad de IDs encontrados: 3
 
@@ -588,7 +600,7 @@ Cantidad de IDs encontrados: 3
 >>El ID 2 corresponde al elemento que gira/mueve.
 >>>Los IDs 3 y 4 son los puntos de montaje laterales.
 
-### 30. Anchor
+### 31. Anchor
 
 Cantidad de IDs encontrados: 4
 
@@ -604,7 +616,7 @@ Cantidad de IDs encontrados: 4
 >> El `Anchor` utiliza una distribución de 4 puntos formando una matriz de esquinas.
 >>> No tiene un punto central.
 
-### 31. BallSocket
+### 32. BallSocket
 
 Cantidad de IDs encontrados: 1
 
@@ -617,7 +629,7 @@ Cantidad de IDs encontrados: 1
 >> `BallSocket` solo tiene un punto propio confirmado.
 >> El punto parece funcionar como el punto principal donde se conecta la articulación, similar a `Joint`, pero con movimiento esférico.
 
-### 32. MatchingGyro
+### 33. MatchingGyro
 
 Cantidad de IDs encontrados: 5
 
@@ -636,7 +648,7 @@ Cantidad de IDs encontrados: 5
 >> Los nombres técnicos utilizados son: `HandleMount`, `Right`, `Top`, `Back` y `Front`.
 >> El ID 1 corresponde al mango donde se monta el MatchingGyro.
 
-### 33. Uzi
+### 34. Uzi
 
 Cantidad de IDs encontrados: 1
 
@@ -650,7 +662,7 @@ Cantidad de IDs encontrados: 1
 >> El objeto `Mag` se conecta al ID 1 de la `Uzi`.
 >> No se han identificado otros puntos de conexión propios.
 
-### 34. Briefcase
+### 35. Briefcase
 
 Cantidad de IDs encontrados: 4
 
@@ -666,7 +678,7 @@ Cantidad de IDs encontrados: 4
 >> `Briefcase` posee cuatro puntos de conexión distribuidos alrededor del objeto.
 >> El ID 2 corresponde al punto central, mientras que los demás representan las caras frontal, izquierda y derecha.
 
-### 35. FuelTank
+### 36. FuelTank
 
 Cantidad de IDs encontrados: 1
 
@@ -679,7 +691,7 @@ Cantidad de IDs encontrados: 1
 >> `FuelTank` posee un único punto de conexión propio.
 >> Se utiliza para montar el tanque sobre otro objeto.
 
-### 36. EntitySensor
+### 37. EntitySensor
 
 Cantidad de IDs encontrados: 6
 
@@ -697,7 +709,7 @@ Cantidad de IDs encontrados: 6
 >> `EntitySensor` posee seis puntos de conexión distribuidos en dos filas (frontal y trasera).
 >> La disposición es simétrica: tres puntos al frente y tres en la parte trasera.
 
-### 37. Looper
+### 38. Looper
 
 Cantidad de IDs encontrados: 4
 
@@ -714,7 +726,7 @@ Cantidad de IDs encontrados: 4
 >> El lado izquierdo corresponde al lado donde se encuentra la rueda/perilla de ajuste.
 >> No hay un punto de conexión en la parte trasera ni en la parte inferior.
 
-### 38. Gate-AND
+### 39. Gate-AND
 
 Cantidad de IDs encontrados: 3
 
@@ -729,7 +741,7 @@ Cantidad de IDs encontrados: 3
 >> `Gate-AND` posee dos entradas (`InputA` e `InputB`) y una salida (`Output`).
 >> El punto de salida se encuentra en la parte frontal del bloque.
 
-### 39. Gate-OR
+### 40. Gate-OR
 
 Cantidad de IDs encontrados: 3
 
@@ -744,7 +756,7 @@ Cantidad de IDs encontrados: 3
 >> `Gate-OR` posee la misma distribución de puntos de conexión que `Gate-AND`.
 >> La única diferencia corresponde a la operación lógica implementada por el bloque.
 
-### 40. Gate-NOT
+### 41. Gate-NOT
 
 Cantidad de IDs encontrados: 2
 
@@ -753,14 +765,7 @@ Cantidad de IDs encontrados: 2
 | 1   | Output | Right | Punto de salida de la compuerta lógica NOT.  |
 | 2   | Input  | Left  | Punto de entrada de la compuerta lógica NOT. |
 
-> Notas:
-
->> `Wire` posee dos puntos de conexión, uno en cada extremo del bloque.
->> El ID 2 corresponde al extremo izquierdo y el ID 4 al extremo derecho.
->> `Wire` transmite señales lógicas entre ambos extremos, funcionando como un cable dentro de los circuitos.
->> La señal puede entrar por cualquiera de los dos extremos y salir por el otro.
-
-### 41. Wire
+### 42. Wire
 
 Cantidad de IDs encontrados: 2
 
@@ -774,7 +779,7 @@ Cantidad de IDs encontrados: 2
 >> `Wire` posee dos puntos de conexión, uno en cada extremo del bloque.
 >> El ID 2 corresponde al extremo izquierdo y el ID 4 al extremo derecho.
 
-### 42. Body
+### 43. Body
 
 Cantidad de IDs encontrados: 5
 
@@ -792,20 +797,21 @@ Cantidad de IDs encontrados: 5
 >> Los IDs 1 y 2 corresponden a los brazos derecho e izquierdo respectivamente.
 >> El ID 3 corresponde a la cabeza.
 >> Los IDs 4 y 5 corresponden a las piernas derecha e izquierda respectivamente.
->> `Body` NO se puede cargar mediante el menu de Spawn, solo internamente con:
+>> `Body` NO se puede cargar mediante el menu de Spawn, puede ser internamente con:
 ```json
 [["Body", [], []]]
 ```
 >>> o formato Base64:
 `W1siQm9keSIsIFtdLCBbXV1d`
 
-### 43. YibYib
+### 44. YibYib
 
 Cantidad de IDs encontrados: 1
 
 | ID  | Nombre | Lado | Descripción                                       |
 | --- | ------ | ---- | ------------------------------------------------- |
-| 2   | Steal  | Top  | Punto de conexión donde el YibYib agarra objetos. |
+| 2   | Hands  | Top  | Punto de conexión donde el YibYib agarra objetos. |
+---
 
 ## Objetos sin puntos de conexión propios
 > **Hecho por:** @JuanCrakYT
@@ -841,7 +847,13 @@ Estos objetos utilizan puntos de conexión definidos por otros objetos.
 27. Jug
 28. Lock
 29. Poop
-30. wad
+30. Wad
+    > El objeto `Wad` presenta un comportamiento diferente.
+    - Puede cargarse correctamente en una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No posee IDs de puntos de conexión propios conocidos.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - Su aparición en el formato puede depender de estados internos del juego.
 31. Recorder
 32. Canister
 33. CannonBall
@@ -851,21 +863,21 @@ Estos objetos utilizan puntos de conexión definidos por otros objetos.
 37. DoorC
 38. DoorD
 39. TV
-> El objeto `TV` presenta un comportamiento diferente.
-- Puede cargarse correctamente en una build.
-- No puede guardarse mediante el sistema normal de guardado.
-- No posee IDs de puntos de conexión propios conocidos.
-- Su aparición en el formato puede depender de estados internos del juego.
-
+    > El objeto `TV` presenta un comportamiento diferente.
+    - Puede cargarse correctamente en una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No posee IDs de puntos de conexión propios conocidos.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - Su aparición en el formato puede depender de estados internos del juego.
 40.   Camera
 41.   Carrot
 42.   Guitar
-> El objeto `Guitar` presenta un comportamiento diferente.
-- Puede cargarse correctamente en una build.
-- No puede guardarse mediante el sistema normal de guardado.
-- No posee IDs de puntos de conexión propios conocidos.
-- Su aparición en el formato puede depender de estados internos del juego.
-  
+    > El objeto `Guitar` presenta un comportamiento diferente.
+    - Puede cargarse correctamente en una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No posee IDs de puntos de conexión propios conocidos.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - Su aparición en el formato puede depender de estados internos del juego. 
 43.   MountedGun
 44.   Plunger
 45.   Joust
@@ -879,51 +891,54 @@ Estos objetos utilizan puntos de conexión definidos por otros objetos.
 53.   Leafblower
 54.   RiotShield
 55.   ToolGun
-> El objeto `RiotShield` presenta un comportamiento diferente.
-- Puede cargarse correctamente en una build.
-- No puede guardarse mediante el sistema normal de guardado.
-- No posee IDs de puntos de conexión propios conocidos.
-- Su aparición en el formato puede depender de estados internos del juego.
-56.   Keyboard
-> El objeto `Keyboard` presenta un comportamiento diferente.
-- Puede cargarse correctamente en una build.
-- No puede guardarse mediante el sistema normal de guardado.
-- No posee IDs de puntos de conexión propios conocidos.
-- Su aparición en el formato puede depender de estados internos del juego.
-57.   Head
-> El objeto `Head` presenta un comportamiento diferente.
-- Puede cargarse mediante una build. 
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
-58.   PolaroidCamera
-> El objeto `PolaroidCamera` presenta un comportamiento diferente.
-- Puede cargarse mediante una build.
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
-59.   PolaroidPhoto
-> El objeto `PolaroidPhoto` presenta un comportamiento diferente.
-- Puede cargarse mediante una build.
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
-60.   Fricklet
-> El objeto `Fricklet` presenta un comportamiento diferente.
-- Puede cargarse mediante una build.
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
-61.   SuperPowerClock
-> El objeto `SuperPowerClock` presenta un comportamiento diferente.
-- Puede cargarse mediante una build.
-- No puede guardarse mediante el sistema normal de guardado.
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
-62.   Successor
-> El objeto `Successor` presenta un comportamiento diferente.
-- Puede cargarse mediante una build.
-- No aparece en el panel normal de spawn.
-- Debe cargarse internamente mediante el formato de build.
-- No posee IDs de puntos de conexión propios.
+    > El objeto `RiotShield` presenta un comportamiento diferente.
+    - Puede cargarse correctamente en una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - No posee IDs de puntos de conexión propios conocidos.
+    - Su aparición en el formato puede depender de estados internos del juego.
+56.    Keyboard
+    > El objeto `Keyboard` presenta un comportamiento diferente.
+    - Puede cargarse correctamente en una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - No posee IDs de puntos de conexión propios conocidos.
+    - Su aparición en el formato puede depender de estados internos del juego.
+57.    Head
+    > El objeto `Head` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build. 
+    - No aparece en el panel normal de spawn.
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.
+58.    PolaroidCamera
+    > El objeto `PolaroidCamera` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build.
+    - No aparece en el panel normal de spawn.
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.
+59.    PolaroidPhoto
+    > El objeto `PolaroidPhoto` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build.
+    - No aparece en el panel normal de spawn.
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.
+60.    Fricklet
+    > El objeto `Fricklet` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build.
+    - No aparece en el panel normal de spawn.
+    - No puede colocarse en puntos de conexión definidos por otros objetos
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.
+61.    SuperPowerClock
+    > El objeto `SuperPowerClock` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build.
+    - No puede guardarse mediante el sistema normal de guardado.
+    - No aparece en el panel normal de spawn.
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.
+62.    Successor
+    > El objeto `Successor` presenta un comportamiento diferente.
+    - Puede cargarse mediante una build.
+    - No aparece en el panel normal de spawn.
+    - Debe cargarse internamente mediante el formato de build.
+    - No posee IDs de puntos de conexión propios.

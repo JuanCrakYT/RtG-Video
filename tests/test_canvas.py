@@ -71,3 +71,13 @@ def test_2x2_export_is_one_physical_build():
     assert sum(block[0] == "Base" for block in data) == 1
     assert sum(block[0] == "Splitter_3" for block in data) == 4
     assert not any(block[0] in {"Delayer", "Gate-OR", "Wire", "Note"} for block in data)
+
+
+def test_required_canvas_dimensions_use_current_template():
+    template_size = len(load_pixel_template_from_file(str(TEMPLATE_PATH)).blocks)
+
+    for width, height in ((5, 5), (5, 7), (128, 128)):
+        matrix = build_canvas(width, height)
+        assert len(matrix.pixels) == width * height
+        assert sum(block.block_type == "Base" for block in matrix.build.blocks) == 1
+        assert len(matrix.build.blocks) == 1 + width * height * template_size

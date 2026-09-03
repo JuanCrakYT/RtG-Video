@@ -134,7 +134,6 @@ def run_demo(
         compact=False,
     )
     print(f"✓ Physical canvas exported: {export_paths['display']}")
-    print(f"✓ Synchronized metadata exported: {export_paths['info']}")
     
     print(f"\n{'='*60}")
     print("Demo completed successfully!")

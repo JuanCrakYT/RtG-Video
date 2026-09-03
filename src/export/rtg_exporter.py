@@ -40,7 +40,7 @@ class RtGExporter:
         matrix: DisplayMatrix,
         filepath: str,
         compact: bool = False
-    ) -> None:
+    ) -> str:
         """
         Save display to a JSON file.
         
@@ -49,7 +49,12 @@ class RtGExporter:
             filepath: Path to save file
             compact: If True, use compact JSON format
         """
-        save_build(matrix.build, filepath, compact)
+        json_string = RtGExporter.export_display(matrix, compact)
+        from pathlib import Path
+        output_path = Path(filepath)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json_string, encoding="utf-8")
+        return json_string
     
     @staticmethod
     def get_export_info(matrix: DisplayMatrix) -> Dict[str, Any]:
@@ -97,16 +102,11 @@ class RtGExporter:
                 generated_file.unlink()
 
         display_path = output_path / "display.json"
-        info_path = output_path / "info.json"
-        RtGExporter.save_display(matrix, str(display_path), compact)
-
-        info_data = {"display": RtGExporter.get_export_info(matrix)}
-        with info_path.open("w", encoding="utf-8") as info_file:
-            json.dump(info_data, info_file, indent=2)
+        json_string = RtGExporter.save_display(matrix, str(display_path), compact)
 
         return {
             "display": str(display_path),
-            "info": str(info_path),
+            "json": json_string,
         }
 
 
