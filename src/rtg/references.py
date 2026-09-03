@@ -118,7 +118,7 @@ class ReferenceManager:
         base_index: int,
         x: int,
         y: int,
-        spacing: float = 4.0
+        spacing: float = 1.0
     ) -> str:
         """
         Connect a pixel block to the Base using UUID + CFrame positioning.

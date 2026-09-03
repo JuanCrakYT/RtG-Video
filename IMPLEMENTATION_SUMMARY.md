@@ -196,7 +196,7 @@ template = PixelTemplate(pixel_build)
 
 matrix = (MatrixBuilder()
     .set_dimensions(8, 8)
-    .set_spacing(4.0)
+    .set_spacing(1.0)
     .set_template(template)
     .build())
 ```

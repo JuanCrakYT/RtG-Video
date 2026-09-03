@@ -58,7 +58,7 @@ def test_cframe():
     assert x == 5.0 and y == 10.0 and z == 15.0, "Position should match"
     
     # Pixel offset
-    cf_pixel = create_pixel_offset_cframe(2, 3, 4.0)
+    cf_pixel = create_pixel_offset_cframe(2, 3, 1.0)
     x, y, z = cf_pixel.get_position()
     assert x == 8.0 and y == 12.0, f"Pixel offset incorrect: {x}, {y}, {z}"
     
@@ -135,7 +135,7 @@ def test_pixel():
     
     # Create pixel instance from template
     pixel, index_map = pixel_template.create_pixel_instance(
-        x=0, y=0, target_build=target_build, base_index=0, spacing=4.0
+        x=0, y=0, target_build=target_build, base_index=0, spacing=1.0
     )
     
     assert pixel.x == 0 and pixel.y == 0, "Position should match"

@@ -22,7 +22,7 @@ def generate_physical_canvas(width: int, height: int, output_dir: str):
     matrix = (
         MatrixBuilder()
         .set_dimensions(width, height)
-        .set_spacing(4.0)
+        .set_spacing(1.0)
         .set_template(template)
         .build()
     )

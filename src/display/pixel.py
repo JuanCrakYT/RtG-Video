@@ -207,7 +207,7 @@ class PixelTemplate:
         y: int,
         target_build: RtGBuild,
         base_index: int,
-        spacing: float = 4.0
+        spacing: float = 1.0
     ) -> Tuple[Pixel, Dict[int, int]]:
         """
         Create a pixel instance by cloning the template with remapped indices.

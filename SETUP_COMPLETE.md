@@ -96,7 +96,7 @@ template = PixelTemplate(template_build)
 # Crear matriz
 matrix = (MatrixBuilder()
     .set_dimensions(4, 4)
-    .set_spacing(4.0)
+    .set_spacing(1.0)
     .set_template(template)
     .build())
 ```

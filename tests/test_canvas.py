@@ -19,7 +19,7 @@ def build_canvas(width: int, height: int):
     return (
         MatrixBuilder()
         .set_dimensions(width, height)
-        .set_spacing(4.0)
+        .set_spacing(1.0)
         .set_template(template)
         .build()
     )
@@ -58,7 +58,7 @@ def test_3x2_physical_canvas():
 
     for (x, y), pixel in matrix.pixels.items():
         assert matrix.get_pixel(x, y) is pixel
-        assert positions[pixel.uuid]["cframe"][:3] == [x * 4.0, y * 4.0, 0.0]
+        assert positions[pixel.uuid]["cframe"][:3] == [x * 1.0, y * 1.0, 0.0]
 
 
 def test_2x2_export_is_one_physical_build():

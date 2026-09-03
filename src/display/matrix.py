@@ -48,7 +48,7 @@ class DisplayMatrix:
         # Track active pixels
         self.active_pixels: Set[Tuple[int, int]] = set()
     
-    def initialize_build(self, spacing: float = 4.0) -> int:
+    def initialize_build(self, spacing: float = 1.0) -> int:
         """
         Initialize the build by creating all pixels.
         
