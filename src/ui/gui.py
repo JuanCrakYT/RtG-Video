@@ -258,7 +258,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Width",
-            5, 128, 8,
+            2, 128, 8,
             self._on_width_changed,
             "width_value"
         )
@@ -267,7 +267,7 @@ class RtGDisplayGUI:
         self._build_slider(
             content,
             "Height",
-            5, 128, 8,
+            2, 128, 8,
             self._on_height_changed,
             "height_value"
         )
@@ -314,13 +314,14 @@ class RtGDisplayGUI:
         )
         label_widget.pack(side=tk.LEFT)
         
-        value_widget = tk.Label(
+        value_widget = tk.Entry(
             label_frame,
-            text=f"{default_val}",
+            width=5,
             font=('Segoe UI', 10, 'bold'),
             bg=self.bg_secondary,
             fg=self.accent_color
         )
+        value_widget.insert(0, str(default_val))
         value_widget.pack(side=tk.RIGHT)
         
         # Store value widget
@@ -328,8 +329,25 @@ class RtGDisplayGUI:
         
         # Slider
         def on_slider_change(val):
-            value_widget.config(text=str(int(float(val))))
-            on_change(int(float(val)))
+            slider_value = int(float(val))
+            value_widget.delete(0, tk.END)
+            value_widget.insert(0, str(slider_value))
+            on_change(slider_value)
+
+        def on_value_confirm(_event=None):
+            try:
+                input_value = int(value_widget.get())
+            except ValueError:
+                input_value = int(slider.get())
+
+            input_value = max(min_val, min(max_val, input_value))
+            value_widget.delete(0, tk.END)
+            value_widget.insert(0, str(input_value))
+            slider.set(input_value)
+            return "break"
+
+        value_widget.bind("<Return>", on_value_confirm)
+        value_widget.bind("<FocusOut>", on_value_confirm)
         
         slider = tk.Scale(
             frame,
