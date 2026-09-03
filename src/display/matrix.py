@@ -156,7 +156,7 @@ class MatrixBuilder:
         """Initialize builder."""
         self.width = 8
         self.height = 8
-        self.spacing = 4.0
+        self.spacing = 1.0
         self.template = None
     
     def set_dimensions(self, width: int, height: int) -> 'MatrixBuilder':

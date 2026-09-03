@@ -5,7 +5,7 @@ Configuration and constants for RtG Display
 # Display defaults
 DEFAULT_DISPLAY_WIDTH = 8
 DEFAULT_DISPLAY_HEIGHT = 8
-DEFAULT_PIXEL_SPACING = 4.0  # Units in RtG space
+DEFAULT_PIXEL_SPACING = 1.0  # Units in RtG space
 
 # CFrame defaults
 DEFAULT_CFRAME_IDENTITY = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
