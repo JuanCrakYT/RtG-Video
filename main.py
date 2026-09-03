@@ -206,6 +206,7 @@ def generate_video_build(settings):
         .set_dimensions(settings["width"], settings["height"])
         .set_spacing(DEFAULT_PIXEL_SPACING)
         .set_template(pixel_template)
+        .set_palette(settings.get("palette", [BLACK, WHITE, GRAY]))
         .build()
     )
     sequence = video_to_sequence(
@@ -219,7 +220,7 @@ def generate_video_build(settings):
             index: frame.get_active_pixels()
             for index, frame in enumerate(sequence.frames)
         },
-        resolve_pixel_inputs(matrix.pixels.values()),
+        resolve_pixel_inputs(matrix.iter_pixels()),
         [frame.duration for frame in sequence.frames],
     )
     return CombinedExporter.export_complete(matrix, sequence, "output")

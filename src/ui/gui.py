@@ -293,6 +293,7 @@ class RtGDisplayGUI:
             fg=self.accent_color
         )
         self.output_size_label.pack(side=tk.LEFT, padx=(10, 0))
+        self._update_output_size()
     
     def _build_slider(self, parent, label: str, min_val: int, max_val: int, 
                      default_val: int, on_change: Callable, attr_name: str):
@@ -421,6 +422,7 @@ class RtGDisplayGUI:
             self.palette_colors + [selected[0]]
         )]
         self._refresh_palette_combo()
+        self._update_output_size()
 
     def _remove_palette_color(self):
         if self.palette_combo is None:
@@ -431,6 +433,7 @@ class RtGDisplayGUI:
             return
         self.palette_colors.pop(selected_index)
         self._refresh_palette_combo()
+        self._update_output_size()
     
     def _build_action_buttons(self, parent):
         """Build the action buttons."""
@@ -556,9 +559,17 @@ class RtGDisplayGUI:
         """Update the output size display."""
         width = getattr(self, 'width_value_slider').get()
         height = getattr(self, 'height_value_slider').get()
-        total = width * height
+        non_black_colors = sum(
+            tuple(color) != (0, 0, 0)
+            for color in self.palette_colors
+        )
+        total = width * height * non_black_colors
+        black_pixels = width * height
         self.output_size_label.config(
-            text=f"{width} × {height} ({total} pixels)"
+            text=(
+                f"{width} × {height} × {non_black_colors} "
+                f"({total} pixels, just {black_pixels} black pixels)"
+            )
         )
     
     def _close_preview(self):

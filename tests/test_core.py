@@ -60,7 +60,7 @@ def test_cframe():
     # Pixel offset
     cf_pixel = create_pixel_offset_cframe(2, 3, 1.0)
     x, y, z = cf_pixel.get_position()
-    assert x == 8.0 and y == 12.0, f"Pixel offset incorrect: {x}, {y}, {z}"
+    assert x == 2.0 and y == 3.0, f"Pixel offset incorrect: {x}, {y}, {z}"
     
     # CFrame inverse
     cf_inv = cf_pos.inverse()

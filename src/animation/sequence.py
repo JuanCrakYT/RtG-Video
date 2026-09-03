@@ -142,6 +142,10 @@ class SequenceBuilder:
                 # Create copies of the frame
                 new_frame = AnimationFrame(last_frame.duration)
                 new_frame.set_active_pixels(last_frame.get_active_pixels())
+                new_frame.pixel_colors = {
+                    pixel_uuid: color.copy()
+                    for pixel_uuid, color in last_frame.pixel_colors.items()
+                }
                 self.frames.append(new_frame)
         return self
     

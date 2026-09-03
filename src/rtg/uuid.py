@@ -7,7 +7,7 @@ UUIDs are used to reference EphemeralAttachments and spatial transformations.
 
 import uuid
 import re
-from typing import Dict, Set, Tuple, Optional
+from typing import Dict, List, Set, Tuple, Optional
 
 
 class UUIDManager:
@@ -20,7 +20,7 @@ class UUIDManager:
     def __init__(self):
         """Initialize UUID manager with empty tracking maps."""
         self._generated_uuids: Set[str] = set()
-        self._pixel_uuid_map: Dict[Tuple[int, int], str] = {}  # (x, y) -> UUID
+        self._pixel_uuid_map: Dict[Tuple[int, int], List[str]] = {}  # (x, y) -> UUIDs
         self._uuid_pixel_map: Dict[str, Tuple[int, int]] = {}  # UUID -> (x, y)
     
     @staticmethod
@@ -72,7 +72,7 @@ class UUIDManager:
         self._generated_uuids.add(uuid_str)
         
         if pixel_pos is not None:
-            self._pixel_uuid_map[pixel_pos] = uuid_str
+            self._pixel_uuid_map.setdefault(pixel_pos, []).append(uuid_str)
             self._uuid_pixel_map[uuid_str] = pixel_pos
         
         return True
@@ -107,7 +107,12 @@ class UUIDManager:
         Returns:
             str: The UUID, or None if not found
         """
-        return self._pixel_uuid_map.get((x, y))
+        uuids = self._pixel_uuid_map.get((x, y), [])
+        return uuids[-1] if uuids else None
+
+    def get_pixel_uuids(self, x: int, y: int) -> List[str]:
+        """Get all physical pixel UUIDs registered at a position."""
+        return self._pixel_uuid_map.get((x, y), []).copy()
     
     def get_pixel_position(self, uuid_str: str) -> Tuple[int, int]:
         """
@@ -137,9 +142,12 @@ class UUIDManager:
         """Get all registered UUIDs."""
         return self._generated_uuids.copy()
     
-    def get_pixel_map(self) -> Dict[Tuple[int, int], str]:
-        """Get the complete pixel position to UUID map."""
-        return self._pixel_uuid_map.copy()
+    def get_pixel_map(self) -> Dict[Tuple[int, int], List[str]]:
+        """Get the complete pixel position to physical UUIDs map."""
+        return {
+            position: uuids.copy()
+            for position, uuids in self._pixel_uuid_map.items()
+        }
 
 
 # Global instance

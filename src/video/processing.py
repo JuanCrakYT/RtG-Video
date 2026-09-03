@@ -86,7 +86,9 @@ def video_to_sequence(video_path, matrix, palette: Iterable[Sequence[int]]):
             frame_builder = FrameBuilder(duration=duration)
             for y, row in enumerate(quantized):
                 for x, color in enumerate(row):
-                    pixel = matrix.get_pixel(x, y)
+                    if color == BLACK:
+                        continue
+                    pixel = matrix.get_pixel_for_color(x, y, color)
                     if pixel is not None:
                         frame_builder.set_pixel_color(pixel.uuid, color)
             sequence_builder.add_frame(frame_builder.build())

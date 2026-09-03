@@ -5,7 +5,7 @@ Handles cloning complex pixel templates with index remapping.
 """
 
 from copy import deepcopy
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Sequence
 from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
 from ..rtg.cframe import CFrame
 from ..rtg.uuid import get_uuid_manager
@@ -63,7 +63,7 @@ class Pixel:
         splitter_entries = [
             (template_index, global_index)
             for template_index, global_index in self.block_indices.items()
-            if self.blocks[template_index].block_type == "Splitter_3"
+            if self.blocks[template_index - 1].block_type == "Splitter_3"
         ]
         if len(splitter_entries) != 1:
             raise ValueError(
@@ -72,7 +72,7 @@ class Pixel:
             )
 
         template_index, global_index = splitter_entries[0]
-        splitter = self.blocks[template_index]
+        splitter = self.blocks[template_index - 1]
         if not splitter.connections:
             raise ValueError(
                 f"Pixel {self.uuid} Splitter_3 has no connections to resolve"
@@ -83,7 +83,7 @@ class Pixel:
             raise ValueError(
                 f"Pixel {self.uuid} Splitter_3 input point must be numeric"
             )
-        return global_index, input_point
+        return global_index - 1, input_point
 
 
 class PixelTemplate:
@@ -105,6 +105,14 @@ class PixelTemplate:
             for index, block in enumerate(self.template.blocks)
             if not block.connections
         ]
+        if len(root_indices) > 1:
+            non_base_roots = [
+                index
+                for index in root_indices
+                if self.template.blocks[index].block_type != "Base"
+            ]
+            if len(non_base_roots) == 1:
+                return non_base_roots[0]
     
         if len(root_indices) != 1:
             raise ValueError(
@@ -207,7 +215,8 @@ class PixelTemplate:
         y: int,
         target_build: RtGBuild,
         base_index: int,
-        spacing: float = 1.0
+        spacing: float = 1.0,
+        color: Optional[Sequence[int]] = None,
     ) -> Tuple[Pixel, Dict[int, int]]:
         """
         Create a pixel instance by cloning the template with remapped indices.
@@ -258,6 +267,9 @@ class PixelTemplate:
                 connections=[],  # Will be remapped
                 properties=self._remap_value(deepcopy(template_block.properties))
             )
+
+            if color is not None and new_block.block_type == "Splitter_3":
+                new_block.properties["RGB"] = [int(channel) for channel in color]
             
             # Remap all connections
             for old_conn in template_block.connections:
