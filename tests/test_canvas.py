@@ -81,3 +81,35 @@ def test_required_canvas_dimensions_use_current_template():
         assert len(matrix.pixels) == width * height
         assert sum(block.block_type == "Base" for block in matrix.build.blocks) == 1
         assert len(matrix.build.blocks) == 1 + width * height * template_size
+
+def test_pixel_base_attachment_is_on_template_root():
+    matrix = build_canvas(1, 1)
+    template = load_pixel_template_from_file(str(TEMPLATE_PATH))
+
+    pixel = matrix.get_pixel(0, 0)
+    assert pixel is not None
+
+    root_template_indices = [
+        index
+        for index, block in enumerate(template.blocks)
+        if not block.connections
+    ]
+    assert root_template_indices == [9]
+
+    root_block = pixel.blocks[9]
+
+    # Root is the 10th template object = logical object 11
+    # because Base occupies logical object index 1.
+    assert root_block.block_type == "Part"
+    assert [
+        connection[:2]
+        for connection in root_block.connections
+    ] == [
+        ["1", pixel.uuid]
+    ]
+
+    # The first serialized object must retain only its original
+    # Connector -> Servo connection.
+    first_block = pixel.blocks[0]
+    assert first_block.block_type == "Connector"
+    assert first_block.connections == [["5", "2", 19]]

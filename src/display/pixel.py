@@ -93,6 +93,26 @@ class PixelTemplate:
     When cloning a template, all internal references must be remapped
     to point to the new block indices in the target build.
     """
+
+    def _find_template_root_index(self) -> int:
+        """Return the unique root object of the template.
+    
+        RtG parent references point from a child object to its parent.
+        Therefore, the template root is the object with no parent connections.
+        """
+        root_indices = [
+            index
+            for index, block in enumerate(self.template.blocks)
+            if not block.connections
+        ]
+    
+        if len(root_indices) != 1:
+            raise ValueError(
+                "Pixel template must contain exactly one root object "
+                f"(an object with no connections); found {len(root_indices)}"
+            )
+    
+        return root_indices[0]
     
     def __init__(self, template_build: RtGBuild):
         """
@@ -247,35 +267,46 @@ class PixelTemplate:
             # Remap ephemeral attachments
             if "EphemeralAttachments" in new_block.properties:
                 old_attachments = new_block.properties["EphemeralAttachments"]
-                new_block.properties["EphemeralAttachments"] = \
+                new_block.properties["EphemeralAttachments"] = (
                     self._remap_ephemeral_attachments(old_attachments, uuid_mapping)
+                )
             
             new_blocks.append(new_block)
         
-        # Add all new blocks to target build
+        # Add all new blocks to target build.
+        start_index = len(target_build.blocks)
+
         for block in new_blocks:
             target_build.add_block(block)
-        
-        # Connect first block of pixel to Base using UUID + CFrame
-        if len(new_blocks) > 0:
-            first_block_index = len(target_build.blocks) - len(new_blocks)
-            first_block = target_build.blocks[first_block_index]
-            base_block = target_build.blocks[base_index]
-            
-            # Create positioning CFrame
-            cframe = create_pixel_offset_cframe(x, y, spacing)
-            
-            # Add connection to Base using RtG's 1-based parent index.
-            first_block.connections.append(["1", pixel_uuid, to_rtg_index(base_index)])
-            
-            # Add ephemeral attachment to Base
-            if "EphemeralAttachments" not in base_block.properties:
-                base_block.properties["EphemeralAttachments"] = {}
-            
-            base_block.properties["EphemeralAttachments"][pixel_uuid] = {
-                "partName": "Base",
-                "cframe": cframe.to_list()
-            }
+
+        # RtG parent references point from child -> parent.
+        # The pixel must therefore be attached through the template's actual
+        # structural root, not simply through the first serialized object.
+        root_template_index = self._find_template_root_index()
+        root_global_index = start_index + root_template_index
+
+        root_block = target_build.blocks[root_global_index]
+        base_block = target_build.blocks[base_index]
+
+        # Create the spatial attachment on Base.
+        cframe = create_pixel_offset_cframe(x, y, spacing)
+
+        # The template root is a Part (LocalType 1), so the Base UUID connection
+        # belongs on that root object.
+        root_block.connections.append([
+            "1",
+            pixel_uuid,
+            to_rtg_index(base_index),
+        ])
+
+        # Register the same UUID on the Base as an EphemeralAttachment.
+        if "EphemeralAttachments" not in base_block.properties:
+            base_block.properties["EphemeralAttachments"] = {}
+
+        base_block.properties["EphemeralAttachments"][pixel_uuid] = {
+            "partName": "Base",
+            "cframe": cframe.to_list()
+        }
         
         # Create and return Pixel object
         pixel = Pixel(x, y, new_blocks, pixel_uuid, index_mapping)
