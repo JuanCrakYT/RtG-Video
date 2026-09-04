@@ -3,6 +3,8 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="../assets/logo/favicon.ico">
     <title>RtG JavaScript Preview Experiment</title>
     <style>
         body {
@@ -28,10 +30,14 @@
 
 <body>
     <h1>RtG JavaScript Preview Experiment</h1>
-    <input id="video-file" type="file" accept="video/*">
-    <label>Width <input id="width" type="number" min="2" max="128" value="8"></label>
-    <label>Height <input id="height" type="number" min="2" max="128" value="8"></label>
+    <label for="video-file">Video file</label>
+    <input id="video-file" type="file" accept="video/*" title="Choose a video file" aria-describedby="status">
+    <label for="width">Width</label>
+    <input id="width" type="number" min="2" max="128" value="8" title="Preview width in pixels">
+    <label for="height">Height</label>
+    <input id="height" type="number" min="2" max="128" value="8" title="Preview height in pixels">
     <button id="preview" type="button" disabled>Open Preview</button>
+    <p id="status" role="status">No video loaded.</p>
     <video id="source" controls></video>
     <script type="module">
         import { PreviewController } from "./preview.js";
@@ -39,26 +45,55 @@
         const fileInput = document.querySelector("#video-file");
         const source = document.querySelector("#source");
         const previewButton = document.querySelector("#preview");
+        const status = document.querySelector("#status");
         let controller = null;
+        let objectUrl = null;
+
+        const readDimension = (input) => {
+            const value = Number(input.value);
+            if (!Number.isFinite(value)) {
+                throw new Error(`${input.id} must be numeric`);
+            }
+            const clamped = Math.max(2, Math.min(128, Math.trunc(value)));
+            input.value = String(clamped);
+            return clamped;
+        };
 
         fileInput.addEventListener("change", () => {
             const file = fileInput.files[0];
             if (!file) return;
-            source.src = URL.createObjectURL(file);
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
+            objectUrl = URL.createObjectURL(file);
+            source.src = objectUrl;
             source.dataset.name = file.name;
             source.addEventListener("loadedmetadata", () => {
                 previewButton.disabled = false;
+                status.textContent = `Loaded: ${file.name}`;
+            }, { once: true });
+            source.addEventListener("error", () => {
+                previewButton.disabled = true;
+                status.textContent = `Could not open: ${file.name}`;
             }, { once: true });
         });
 
         previewButton.addEventListener("click", () => {
             controller?.close();
-            controller = new PreviewController({
-                video: source,
-                width: Number(document.querySelector("#width").value),
-                height: Number(document.querySelector("#height").value),
-            });
-            controller.open();
+            try {
+                controller = new PreviewController({
+                    video: source,
+                    width: readDimension(document.querySelector("#width")),
+                    height: readDimension(document.querySelector("#height")),
+                });
+                controller.open();
+                status.textContent = "Preview opened.";
+            } catch (error) {
+                status.textContent = error.message;
+            }
+        });
+
+        window.addEventListener("beforeunload", () => {
+            controller?.close();
+            if (objectUrl) URL.revokeObjectURL(objectUrl);
         });
     </script>
 </body>

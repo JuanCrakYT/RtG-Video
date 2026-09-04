@@ -247,9 +247,9 @@ The folder `tmp/` contains an isolated JavaScript translation of the Preview wor
 
 The experiment includes:
 
-* `tmp/preview.js` — browser-based preview controller, pause/close handling, frame quantization, and palette normalization.
+* `tmp/preview.js` — browser-based preview controller, pause/close handling, video-frame callbacks, area resize, frame quantization, palette normalization, and cleanup.
 * `tmp/preview.html` — manual browser harness for selecting a video and opening the preview window.
-* `tmp/preview-test.js` — Node.js checks for palette deduplication and quantization.
+* `tmp/preview-test.js` — Node.js checks for dimensions, palette deduplication, area resize, and quantization.
 
 Node.js 18 or newer is required. Run the isolated checks with:
 
@@ -259,6 +259,22 @@ npm test
 ```
 
 To try the visual experiment, serve the repository with a local HTTP server and open `tmp/preview.html` in a browser. This temporary implementation must be validated before moving or replacing the Python Preview code.
+
+### Preview translation audit status
+
+The current audit estimates the experimental translation at approximately 75% behavioral coverage:
+
+| Area | Status | Notes |
+| --- | --- | --- |
+| Preview window, controls, pause, resume, close | Complete | Adapted from Tkinter to a browser popup and native video element. |
+| Width/Height validation and pixel rendering | Complete | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization. |
+| Video loading and error handling | Complete | Uses browser file input, metadata/error events, and Object URL cleanup. |
+| Frame scheduling and frame counter | Adapted | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
+| Audio synchronization | Adapted | Uses the native video audio clock instead of MoviePy temporary WAV extraction and Pygame. |
+| OpenCV capture seeking and FPS timing | Not literal | These are Python/OpenCV APIs; browser media timing is the deliberate equivalent. |
+| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Not literal | Replaced by browser APIs and native media lifecycle. |
+
+The translation is therefore not yet a drop-in replacement. The Python Preview remains the production implementation, while `tmp/` is the validation laboratory.
 
 ### Palette Quantization
 
