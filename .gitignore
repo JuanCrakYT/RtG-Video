@@ -41,6 +41,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+tmp/
 
 # Project specific
 output/

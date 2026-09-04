@@ -673,11 +673,18 @@ class RtGDisplayGUI:
             self.preview_token = None
             return
         if self.preview_process.poll() is None:
-            self.preview_process.terminate()
-            try:
-                self.preview_process.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                self.preview_process.kill()
+            if os.name == "nt":
+                subprocess.run(
+                    ["taskkill", "/PID", str(self.preview_process.pid), "/T", "/F"],
+                    capture_output=True,
+                    check=False,
+                )
+            else:
+                self.preview_process.terminate()
+                try:
+                    self.preview_process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    self.preview_process.kill()
         self.preview_process = None
         self.preview_token = None
 
@@ -693,7 +700,7 @@ class RtGDisplayGUI:
         url = self.preview_server.url(token, width, height, self.palette_colors)
         project_root = Path(__file__).resolve().parents[2]
         electron_entry = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
-        local_electron = project_root / "node_modules" / ".bin" / "electron.cmd"
+        local_electron = project_root / "node_modules" / "electron" / "dist" / "electron.exe"
         if local_electron.is_file():
             command = [str(local_electron), str(electron_entry)]
         else:
