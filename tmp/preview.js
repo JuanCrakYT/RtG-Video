@@ -203,6 +203,7 @@ export class PreviewController {
         this.isPlaying = !this.isPlaying;
         if (this.isPlaying) {
             this.video.play().catch(() => this.close());
+            this.drawFrame();
             toggleButton.textContent = "Pause";
         } else {
             this.video.pause();
@@ -211,7 +212,11 @@ export class PreviewController {
     }
 
     drawFrame(frameMetadata = null) {
-        if (!this.previewWindow || this.previewWindow.closed || !this.previewCanvas) {
+        if (!this.previewWindow || this.previewWindow.closed) {
+            this.close();
+            return;
+        }
+        if (!this.previewCanvas || !this.isPlaying) {
             return;
         }
         const context = this.previewContext;

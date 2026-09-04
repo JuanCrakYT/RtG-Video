@@ -266,7 +266,7 @@ The current audit estimates the experimental translation at approximately 75% be
 
 | Area | Status | Notes |
 | --- | --- | --- |
-| Preview window, controls, pause, resume, close | Complete | Adapted from Tkinter to a browser popup and native video element. |
+| Preview window, controls, pause, resume, close | Complete | Adapted from Tkinter to a browser popup and native video element; paused playback stops the render loop and closed popups are cleaned up. |
 | Width/Height validation and pixel rendering | Complete | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization. |
 | Video loading and error handling | Complete | Uses browser file input, metadata/error events, and Object URL cleanup. |
 | Frame scheduling and frame counter | Adapted | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
