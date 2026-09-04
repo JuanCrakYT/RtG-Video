@@ -264,15 +264,15 @@ To try the visual experiment, serve the repository with a local HTTP server and 
 
 The current audit estimates the experimental translation at approximately 75% behavioral coverage:
 
-| Area | Status | Notes |
-| --- | --- | --- |
-| Preview window, controls, pause, resume, close | Complete | Adapted from Tkinter to a browser popup and native video element; paused playback stops the render loop and closed popups are cleaned up. |
-| Width/Height validation and pixel rendering | Complete | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization. |
-| Video loading and error handling | Complete | Uses browser file input, metadata/error events, and Object URL cleanup. |
-| Frame scheduling and frame counter | Adapted | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
-| Audio synchronization | Adapted | Uses the native video audio clock instead of MoviePy temporary WAV extraction and Pygame. |
-| OpenCV capture seeking and FPS timing | Not literal | These are Python/OpenCV APIs; browser media timing is the deliberate equivalent. |
-| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Not literal | Replaced by browser APIs and native media lifecycle. |
+| Area                                                           | Status      | Notes                                                                                                                                                |
+| -------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Preview window, controls, pause, resume, close                 | Complete    | Adapted from Tkinter to a browser popup and native video element; paused playback stops the render loop and closed popups are cleaned up.            |
+| Width/Height validation and pixel rendering                    | Complete    | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization.                                                |
+| Video loading and error handling                               | Complete    | Uses browser file input, metadata/error events, and Object URL cleanup.                                                                              |
+| Frame scheduling and frame counter                             | Adapted     | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
+| Audio synchronization                                          | Adapted     | Uses the native video audio clock instead of MoviePy temporary WAV extraction and Pygame.                                                            |
+| OpenCV capture seeking and FPS timing                          | Not literal | These are Python/OpenCV APIs; browser media timing is the deliberate equivalent.                                                                     |
+| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Not literal | Replaced by browser APIs and native media lifecycle.                                                                                                 |
 
 The translation is therefore not yet a drop-in replacement. The Python Preview remains the production implementation, while `tmp/` is the validation laboratory.
 
