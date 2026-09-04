@@ -84,6 +84,7 @@
                     width: readDimension(document.querySelector("#width")),
                     height: readDimension(document.querySelector("#height")),
                 });
+                window.previewController = controller;
                 controller.open();
                 status.textContent = "Preview opened.";
             } catch (error) {
@@ -93,6 +94,7 @@
 
         window.addEventListener("beforeunload", () => {
             controller?.close();
+            window.previewController = null;
             if (objectUrl) URL.revokeObjectURL(objectUrl);
         });
     </script>

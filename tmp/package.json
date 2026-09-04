@@ -3,6 +3,6 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "test": "node preview-test.js"
+        "test": "node preview-test.js && node preview-controller-test.js"
     }
 }

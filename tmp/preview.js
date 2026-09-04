@@ -166,6 +166,22 @@ export function renderQuantizedGrid(context, quantized, width, height) {
     context.strokeRect(10, 10, width * cellSize, height * cellSize);
 }
 
+export function processVideoFrame(video, sourceCanvas, sourceContext, width, height, palette) {
+    const sourceStart = performance.now();
+    sourceContext.drawImage(video, 0, 0, sourceCanvas.width, sourceCanvas.height);
+    const imageData = sourceContext.getImageData(
+        0,
+        0,
+        sourceCanvas.width,
+        sourceCanvas.height,
+    );
+    const quantized = quantizeImageDataFlat(imageData, width, height, palette);
+    return {
+        quantized,
+        processMs: performance.now() - sourceStart,
+    };
+}
+
 export class PreviewController {
     constructor({ video, width, height, palette = DEFAULT_PALETTE, windowTarget = window }) {
         this.video = video;
@@ -183,7 +199,22 @@ export class PreviewController {
         this.frameNumber = 0;
         this.totalFrames = null;
         this.isPlaying = false;
+        this.callbackMode = null;
+        this.previousPresentedFrames = null;
+        this.metrics = this.createMetrics();
         this.handleVideoError = () => this.close();
+    }
+
+    createMetrics() {
+        return {
+            processedFrames: 0,
+            skippedFrames: 0,
+            callbacks: 0,
+            processMs: 0,
+            renderMs: 0,
+            callbackPending: false,
+            callbackMode: this.callbackMode,
+        };
     }
 
     open() {
@@ -248,6 +279,8 @@ export class PreviewController {
         this.video.addEventListener("error", this.handleVideoError, { once: true });
         this.isPlaying = true;
         this.frameNumber = 0;
+        this.previousPresentedFrames = null;
+        this.metrics = this.createMetrics();
         this.video.play().catch(() => this.close());
         this.drawFrame();
     }
@@ -259,12 +292,27 @@ export class PreviewController {
         this.isPlaying = !this.isPlaying;
         if (this.isPlaying) {
             this.video.play().catch(() => this.close());
-            this.drawFrame();
+            if (!this.metrics.callbackPending) this.drawFrame();
             toggleButton.textContent = "Pause";
         } else {
+            this.cancelScheduledFrame();
             this.video.pause();
             toggleButton.textContent = "Play";
         }
+    }
+
+    cancelScheduledFrame() {
+        if (this.animationFrame === null) return;
+        if (
+            this.callbackMode === "requestVideoFrameCallback"
+            && typeof this.video?.cancelVideoFrameCallback === "function"
+        ) {
+            this.video.cancelVideoFrameCallback(this.animationFrame);
+        } else if (this.callbackMode === "requestAnimationFrame") {
+            this.windowTarget.cancelAnimationFrame(this.animationFrame);
+        }
+        this.animationFrame = null;
+        this.metrics.callbackPending = false;
     }
 
     drawFrame(frameMetadata = null) {
@@ -275,38 +323,62 @@ export class PreviewController {
         if (!this.previewCanvas || !this.isPlaying) {
             return;
         }
+        this.animationFrame = null;
+        this.metrics.callbackPending = false;
+        this.metrics.callbacks += 1;
         const context = this.previewContext;
         if (frameMetadata?.presentedFrames !== undefined) {
             this.frameNumber = frameMetadata.presentedFrames;
+            if (this.previousPresentedFrames !== null) {
+                this.metrics.skippedFrames += Math.max(
+                    0,
+                    frameMetadata.presentedFrames - this.previousPresentedFrames - 1,
+                );
+            }
+            this.previousPresentedFrames = frameMetadata.presentedFrames;
         } else if (!this.video.paused) {
             this.frameNumber += 1;
         }
-        context.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
-        this.sourceContext.drawImage(this.video, 0, 0, this.sourceCanvas.width, this.sourceCanvas.height);
-        const imageData = this.sourceContext.getImageData(
-            0,
-            0,
-            this.sourceCanvas.width,
-            this.sourceCanvas.height,
+        const processed = processVideoFrame(
+            this.video,
+            this.sourceCanvas,
+            this.sourceContext,
+            this.width,
+            this.height,
+            this.palette,
         );
-        const quantized = quantizeImageDataFlat(imageData, this.width, this.height, this.palette);
-        renderQuantizedGrid(context, quantized, this.width, this.height);
+        const renderStart = performance.now();
+        context.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+        renderQuantizedGrid(context, processed.quantized, this.width, this.height);
+        this.metrics.processedFrames += 1;
+        this.metrics.processMs += processed.processMs;
+        this.metrics.renderMs += performance.now() - renderStart;
         this.previewCounter.textContent = `Frame: ${this.frameNumber} / ${this.totalFrames ?? "?"}`;
         if (typeof this.video.requestVideoFrameCallback === "function") {
+            this.callbackMode = "requestVideoFrameCallback";
+            this.metrics.callbackMode = this.callbackMode;
+            this.metrics.callbackPending = true;
             this.animationFrame = this.video.requestVideoFrameCallback((_, metadata) => this.drawFrame(metadata));
         } else {
+            this.callbackMode = "requestAnimationFrame";
+            this.metrics.callbackMode = this.callbackMode;
+            this.metrics.callbackPending = true;
             this.animationFrame = this.windowTarget.requestAnimationFrame(() => this.drawFrame());
         }
     }
 
+    getMetrics() {
+        const { processedFrames, processMs, renderMs } = this.metrics;
+        return {
+            ...this.metrics,
+            averageProcessMs: processedFrames ? processMs / processedFrames : 0,
+            averageRenderMs: processedFrames ? renderMs / processedFrames : 0,
+            averageTotalMs: processedFrames ? (processMs + renderMs) / processedFrames : 0,
+        };
+    }
+
     close() {
-        if (this.animationFrame !== null && typeof this.video?.cancelVideoFrameCallback === "function") {
-            this.video.cancelVideoFrameCallback(this.animationFrame);
-            this.animationFrame = null;
-        } else if (this.animationFrame !== null) {
-            this.windowTarget.cancelAnimationFrame(this.animationFrame);
-            this.animationFrame = null;
-        }
+        this.cancelScheduledFrame();
         if (this.video) {
             this.video.pause();
             this.video.removeEventListener("error", this.handleVideoError);
@@ -322,5 +394,7 @@ export class PreviewController {
         this.sourceContext = null;
         this.frameNumber = 0;
         this.isPlaying = false;
+        this.callbackMode = null;
+        this.previousPresentedFrames = null;
     }
 }

@@ -44,3 +44,6 @@ htmlcov/
 # Project specific
 output/
 *.json.bak
+tmp/synthetic_test.mp4
+tmp/synthetic_test.webm
+tmp/python-playback-results.json

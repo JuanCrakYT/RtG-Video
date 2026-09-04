@@ -258,6 +258,57 @@ cd tmp
 npm test
 ```
 
+### Experimental benchmark results
+
+The earlier laboratory numbers remain a separate **Synthetic frame benchmark**:
+they use one generated `ImageData` buffer repeatedly and are not playback
+measurements. That benchmark measured approximately 346.82 ms/frame (2.88
+FPS) for Python/Tkinter and 4.88 ms/frame (204.92 FPS) for JavaScript/Canvas
+at 128x128, a measured 71.07x difference. Its five-resolution checksums still
+pass in `tmp/preview-test.js`.
+
+The new **End-to-end playback benchmark** uses `tmp/generate_test_video.py` to
+create `tmp/synthetic_test.mp4` automatically when absent. It contains 180
+moving 640x360 frames at 30 FPS and is encoded with OpenCV's local `mp4v`
+fallback when `avc1`/OpenH264 is unavailable. The browser loads that file
+through a real `<video>`, then performs resize, quantization, RGBA buffer
+creation, Canvas 2D rendering, and frame scheduling. Run it with:
+
+```bash
+python tmp/benchmark_python_playback.py --frames 60
+```
+
+and use `tmp/benchmark-playback.html?frames=60` with the browser automation
+harness for the JavaScript side. The measured 60-frame results on this
+machine were:
+
+| Resolution | Python ms/frame | Python FPS | JS ms/frame | JS FPS | JS skipped |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 16x16 | 7.54 | 129.77 | 8.81 | 28.65 | 1 |
+| 32x32 | 24.99 | 39.60 | 8.08 | 29.88 | 0 |
+| 64x64 | 90.45 | 10.99 | 7.92 | 29.90 | 0 |
+| 96x96 | 208.67 | 4.76 | 8.48 | 29.86 | 0 |
+| 128x128 | 353.98 | 2.81 | 8.78 | 29.80 | 0 |
+
+Python uses the productive OpenCV quantizer and Tkinter rectangle renderer;
+JavaScript uses the experimental Canvas 2D `putImageData()` renderer. The
+browser stayed on `requestVideoFrameCallback()` with no console errors or
+failed requests. At 128x128, the 60-frame run remained around 8.78 ms/frame;
+the current benchmark does not expose reliable process memory metrics.
+
+The deterministic frame checksums remain equal between Python and JavaScript
+for the original synthetic buffer. End-to-end checksum sums are reported per
+runtime, but are not byte-identical: lossy `mp4v` decoding in Chromium and
+OpenCV produces small color differences around palette thresholds. This is a
+codec/decode-path limitation, not an ignored mismatch. A lossless browser-
+compatible source is still needed for a strict decoded-video checksum claim.
+
+Playback QA covers the real `<video>` path, pause/resume, callback fallback,
+one pending callback, and close cleanup in `tmp/preview-browser-qa.mjs` and
+`tmp/preview-controller-test.js`. Python remains the production Preview;
+official migration still needs a lossless cross-runtime equivalence fixture,
+broader browser/platform testing, and reliable memory observation.
+
 To try the visual experiment, serve the repository with a local HTTP server and open `tmp/preview.html` in a browser. This temporary implementation must be validated before moving or replacing the Python Preview code.
 
 ### Preview translation audit status
