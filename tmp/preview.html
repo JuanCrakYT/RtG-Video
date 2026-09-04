@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>RtG JavaScript Preview Experiment</title>
+    <style>
+        body {
+            background: #f5f5f5;
+            color: #212121;
+            font-family: "Segoe UI", sans-serif;
+            margin: 24px;
+        }
+
+        video {
+            display: block;
+            max-width: 640px;
+            width: 100%;
+        }
+
+        button,
+        input {
+            margin: 8px 8px 8px 0;
+            padding: 8px;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>RtG JavaScript Preview Experiment</h1>
+    <input id="video-file" type="file" accept="video/*">
+    <label>Width <input id="width" type="number" min="2" max="128" value="8"></label>
+    <label>Height <input id="height" type="number" min="2" max="128" value="8"></label>
+    <button id="preview" type="button" disabled>Open Preview</button>
+    <video id="source" controls></video>
+    <script type="module">
+        import { PreviewController } from "./preview.js";
+
+        const fileInput = document.querySelector("#video-file");
+        const source = document.querySelector("#source");
+        const previewButton = document.querySelector("#preview");
+        let controller = null;
+
+        fileInput.addEventListener("change", () => {
+            const file = fileInput.files[0];
+            if (!file) return;
+            source.src = URL.createObjectURL(file);
+            source.dataset.name = file.name;
+            source.addEventListener("loadedmetadata", () => {
+                previewButton.disabled = false;
+            }, { once: true });
+        });
+
+        previewButton.addEventListener("click", () => {
+            controller?.close();
+            controller = new PreviewController({
+                video: source,
+                width: Number(document.querySelector("#width").value),
+                height: Number(document.querySelector("#height").value),
+            });
+            controller.open();
+        });
+    </script>
+</body>
+
+</html>

@@ -241,6 +241,25 @@ Frames are processed through the following stages:
 
 The current processing implementation uses OpenCV for frame decoding and resizing and NumPy for color-distance calculations. 
 
+## JavaScript Preview Experiment
+
+The folder `tmp/` contains an isolated JavaScript translation of the Preview workflow. It is experimental and does not replace the Python/Tkinter Preview yet.
+
+The experiment includes:
+
+* `tmp/preview.js` — browser-based preview controller, pause/close handling, frame quantization, and palette normalization.
+* `tmp/preview.html` — manual browser harness for selecting a video and opening the preview window.
+* `tmp/preview-test.js` — Node.js checks for palette deduplication and quantization.
+
+Node.js 18 or newer is required. Run the isolated checks with:
+
+```bash
+cd tmp
+npm test
+```
+
+To try the visual experiment, serve the repository with a local HTTP server and open `tmp/preview.html` in a browser. This temporary implementation must be validated before moving or replacing the Python Preview code.
+
 ### Palette Quantization
 
 RtG Video supports configurable RGB palettes.

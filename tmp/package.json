@@ -1,0 +1,8 @@
+{
+    "name": "rtg-preview-experiment",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "test": "node preview-test.js"
+    }
+}
