@@ -47,6 +47,7 @@ class RtGDisplayGUI:
         """
         self.root = root
         self.root.title("RtG Display")
+        self._set_window_icon(self.root)
         self.root.geometry("760x800")
         self.root.minsize(600, 800)
         self.root.resizable(True, True)
@@ -76,6 +77,31 @@ class RtGDisplayGUI:
         
         # Build GUI
         self._build_gui()
+
+    @staticmethod
+    def _asset_path(name: str) -> Path:
+        """Return an asset path independent of the current working directory."""
+        return Path(__file__).resolve().parents[2] / "assets" / "logo" / name
+
+    @classmethod
+    def _set_window_icon(cls, window: tk.Misc) -> None:
+        """Apply the project logo to a Tk window when the asset is available."""
+        favicon_path = cls._asset_path("favicon.ico")
+        logo_path = cls._asset_path("logotipe.png")
+
+        if favicon_path.is_file():
+            try:
+                window.iconbitmap(default=str(favicon_path))
+                return
+            except tk.TclError:
+                pass
+
+        if logo_path.is_file():
+            try:
+                window._rtg_logo_image = tk.PhotoImage(file=str(logo_path))
+                window.iconphoto(True, window._rtg_logo_image)
+            except tk.TclError:
+                pass
     
     def _configure_style(self):
         """Configure the visual style."""
@@ -707,6 +733,7 @@ class RtGDisplayGUI:
 
         self.preview_capture = capture
         self.preview_window = tk.Toplevel(self.root)
+        self._set_window_icon(self.preview_window)
         self.preview_window.title(f"RtG Preview - {video_path.name}")
         self.preview_window.geometry("560x520")
         self.preview_window.resizable(False, False)
