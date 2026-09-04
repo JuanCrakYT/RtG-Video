@@ -241,20 +241,31 @@ Frames are processed through the following stages:
 
 The current processing implementation uses OpenCV for frame decoding and resizing and NumPy for color-distance calculations. 
 
-## JavaScript Preview Experiment
+## JavaScript Preview
 
-The folder `tmp/` contains an isolated JavaScript translation of the Preview workflow. It is experimental and does not replace the Python/Tkinter Preview yet.
+The production Preview now runs in a browser while the Python/Tkinter Preview
+remains available as a temporary fallback. The GUI starts a loopback-only HTTP
+server, registers the selected local video under a random token, and opens
+`src/ui/preview/preview.html`. The browser never receives an arbitrary Windows
+path; it receives the tokenized video URL and releases the token when the page
+closes.
 
-The experiment includes:
+Production files:
 
-* `tmp/preview.js` — browser-based preview controller, pause/close handling, video-frame callbacks, area resize, frame quantization, palette normalization, and cleanup.
-* `tmp/preview.html` — manual browser harness for selecting a video and opening the preview window.
-* `tmp/preview-test.js` — Node.js checks for dimensions, palette deduplication, area resize, and quantization.
+* `src/ui/preview/preview.js` — browser controller, frame processing, Canvas 2D rendering, pause/resume, callbacks, and cleanup.
+* `src/ui/preview/preview.html` — production entry point for a selected local video.
+* `src/ui/preview/server.py` — loopback server and tokenized video serving.
+* `tests/js/` — production-module Node.js tests.
 
-Node.js 18 or newer is required. Run the isolated checks with:
+The original Python preview in `src/ui/gui.py` is intentionally retained as a
+fallback. Its OpenCV, Tkinter, MoviePy, and Pygame paths have not been
+removed. The files under `tmp/` remain the performance laboratory and are not
+runtime dependencies.
+
+Node.js 18 or newer is required for the production module tests:
 
 ```bash
-cd tmp
+cd tests/js
 npm test
 ```
 
@@ -278,9 +289,7 @@ creation, Canvas 2D rendering, and frame scheduling. Run it with:
 python tmp/benchmark_python_playback.py --frames 60
 ```
 
-and use `tmp/benchmark-playback.html?frames=60` with the browser automation
-harness for the JavaScript side. The measured 60-frame results on this
-machine were:
+The measured 60-frame results on this machine were:
 
 | Resolution | Python ms/frame | Python FPS | JS ms/frame | JS FPS | JS skipped |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -304,28 +313,31 @@ codec/decode-path limitation, not an ignored mismatch. A lossless browser-
 compatible source is still needed for a strict decoded-video checksum claim.
 
 Playback QA covers the real `<video>` path, pause/resume, callback fallback,
-one pending callback, and close cleanup in `tmp/preview-browser-qa.mjs` and
-`tmp/preview-controller-test.js`. Python remains the production Preview;
-official migration still needs a lossless cross-runtime equivalence fixture,
-broader browser/platform testing, and reliable memory observation.
+one pending callback, and close cleanup in the migrated tests and the retained
+`tmp/` laboratory. The browser path is now the default GUI Preview; Python is
+the temporary fallback. A lossless cross-runtime equivalence fixture, broader
+browser/platform testing, and reliable memory observation remain future work.
 
-To try the visual experiment, serve the repository with a local HTTP server and open `tmp/preview.html` in a browser. This temporary implementation must be validated before moving or replacing the Python Preview code.
+The old visual experiment remains available through `tmp/preview.html`; it is
+not the production entry point.
 
-### Preview translation audit status
+### Preview migration status
 
-The behavioral audit remains partial; this percentage is not a performance score. The current experimental translation preserves the visible Preview workflow while intentionally using browser-native timing and rendering where that improves measured performance:
+The production translation preserves the visible Preview workflow while using
+browser-native timing and rendering where that improves measured performance:
 
 | Area                                                           | Status      | Notes                                                                                                                                                |
 | -------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preview window, controls, pause, resume, close                 | Complete    | Adapted from Tkinter to a browser popup and native video element; paused playback stops the render loop and closed popups are cleaned up.            |
+| Preview window, controls, pause, resume, close                 | Complete    | Browser entry point uses the selected video, configured dimensions, palette, and native video audio. Python remains a fallback.                       |
 | Width/Height validation and pixel rendering                    | Complete    | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization.                                                |
-| Video loading and error handling                               | Complete    | Uses browser file input, metadata/error events, and Object URL cleanup.                                                                              |
+| Video loading and error handling                               | Complete    | GUI uses a loopback-only tokenized URL; metadata/error events and token cleanup are handled by the browser entry point.                              |
 | Frame scheduling and frame counter                             | Adapted     | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
 | Audio synchronization                                          | Adapted     | Uses the native video audio clock instead of MoviePy temporary WAV extraction and Pygame.                                                            |
 | OpenCV capture seeking and FPS timing                          | Not literal | These are Python/OpenCV APIs; browser media timing is the deliberate equivalent.                                                                     |
-| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Not literal | Replaced by browser APIs and native media lifecycle.                                                                                                 |
+| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Fallback    | The Python implementation remains available; no Python or audio dependency has been removed.                                                       |
 
-The translation is therefore not yet a drop-in replacement. The Python Preview remains the production implementation, while `tmp/` is the validation laboratory.
+`tmp/` remains the validation laboratory; its benchmarks and fixtures are not
+runtime dependencies.
 
 ## Preview Performance Laboratory
 

@@ -10,9 +10,11 @@ from pathlib import Path
 from typing import Optional, Callable
 import os
 import tempfile
+import webbrowser
 
 from src.video.processing import DEFAULT_PALETTE, normalize_palette, quantize_frame
 from src.ui.base64 import encode_latest_display
+from src.ui.preview.server import PreviewServer
 
 try:
     import cv2
@@ -72,11 +74,13 @@ class RtGDisplayGUI:
         self.preview_total_frames = 0
         self.preview_counter_label = None
         self.preview_toggle_btn = None
+        self.preview_server = None
         self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
         self.palette_combo = None
         
         # Build GUI
         self._build_gui()
+        self.root.protocol("WM_DELETE_WINDOW", self._close_application)
 
     @staticmethod
     def _asset_path(name: str) -> Path:
@@ -646,6 +650,25 @@ class RtGDisplayGUI:
             self.preview_window.destroy()
         self.preview_window = None
 
+    def _close_application(self):
+        """Close the Python fallback and the local browser Preview server."""
+        self._close_preview()
+        if self.preview_server is not None:
+            self.preview_server.close()
+            self.preview_server = None
+        self.root.destroy()
+
+    def _open_javascript_preview(self, video_path: Path):
+        """Open the production browser Preview through a tokenized local URL."""
+        if self.preview_server is None:
+            self.preview_server = PreviewServer()
+        token = self.preview_server.register_video(video_path)
+        width = getattr(self, "width_value_slider").get()
+        height = getattr(self, "height_value_slider").get()
+        url = self.preview_server.url(token, width, height, self.palette_colors)
+        if not webbrowser.open_new(url):
+            raise RuntimeError("The system browser could not be opened")
+
     def _toggle_preview_pause(self):
         """Toggle pause/play state for the preview loop."""
         if self.preview_window is None or not self.preview_window.winfo_exists():
@@ -870,7 +893,14 @@ class RtGDisplayGUI:
             messagebox.showwarning("No Video", "Please load a video first")
             return
 
-        self._open_video_preview(self.loaded_video_path)
+        try:
+            self._open_javascript_preview(self.loaded_video_path)
+        except Exception as error:
+            messagebox.showwarning(
+                "JavaScript Preview unavailable",
+                f"{error}\n\nFalling back to the Python Preview.",
+            )
+            self._open_video_preview(self.loaded_video_path)
     
     def _on_copy(self):
         """Handle copy button."""

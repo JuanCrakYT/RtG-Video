@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RtG Preview</title>
+    <style>
+        body { background: #f5f5f5; color: #212121; font-family: "Segoe UI", sans-serif; margin: 0; }
+        #source { display: none; }
+        #status { margin: 16px; text-align: center; }
+    </style>
+</head>
+<body>
+    <video id="source" controls playsinline preload="auto"></video>
+    <p id="status" role="status">Loading preview...</p>
+    <script type="module">
+        import { PreviewController } from "./preview.js";
+
+        const query = new URLSearchParams(window.location.search);
+        const source = document.querySelector("#source");
+        const status = document.querySelector("#status");
+        const token = query.get("video")?.split("/").pop();
+        let controller = null;
+
+        function parsePalette() {
+            try {
+                return JSON.parse(query.get("palette") || "[[0,0,0],[255,255,255],[128,128,128]]");
+            } catch {
+                throw new Error("The configured palette is invalid");
+            }
+        }
+
+        function releaseVideo() {
+            if (token) navigator.sendBeacon(`/release/${encodeURIComponent(token)}`, "");
+        }
+
+        function showError(error) {
+            status.textContent = `Preview error: ${error.message || error}`;
+        }
+
+        async function start() {
+            if (!query.get("video")) throw new Error("No video was supplied");
+            source.src = query.get("video");
+            source.dataset.name = query.get("name") || "video";
+            source.dataset.fps = query.get("fps") || "";
+            await new Promise((resolve, reject) => {
+                source.addEventListener("loadedmetadata", resolve, { once: true });
+                source.addEventListener("error", () => reject(new Error("The selected video could not be loaded")), { once: true });
+            });
+            controller = new PreviewController({
+                video: source,
+                width: Number(query.get("width")),
+                height: Number(query.get("height")),
+                palette: parsePalette(),
+                popup: false,
+                onError: showError,
+                onClose: releaseVideo,
+            });
+            window.previewController = controller;
+            controller.open();
+            document.body.dataset.previewStarted = "true";
+            status.textContent = "Preview playing. Use the controls in the preview window.";
+        }
+
+        window.addEventListener("beforeunload", () => {
+            controller?.close();
+            releaseVideo();
+        }, { once: true });
+        start().catch(showError);
+    </script>
+</body>
+</html>
