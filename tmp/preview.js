@@ -41,6 +41,14 @@ function nearestPaletteColor(red, green, blue, palette) {
     return nearest;
 }
 
+function roundHalfEven(value) {
+    const lower = Math.floor(value);
+    const fraction = value - lower;
+    if (fraction < 0.5) return lower;
+    if (fraction > 0.5) return lower + 1;
+    return lower % 2 === 0 ? lower : lower + 1;
+}
+
 export function resizeImageDataArea(imageData, width, height) {
     const resized = new Uint8ClampedArray(width * height * 4);
     const sourceWidth = imageData.width;
@@ -75,7 +83,7 @@ export function resizeImageDataArea(imageData, width, height) {
 
             const targetOffset = (targetY * width + targetX) * 4;
             for (let channel = 0; channel < 4; channel += 1) {
-                resized[targetOffset + channel] = Math.round(totals[channel] / totalWeight);
+                resized[targetOffset + channel] = roundHalfEven(totals[channel] / totalWeight);
             }
         }
     }
@@ -91,23 +99,71 @@ export function quantizeImageData(imageData, width, height, colors = DEFAULT_PAL
         throw new Error("Preview dimensions must be positive");
     }
 
-    const palette = normalizePalette(colors);
-    const resized = resizeImageDataArea(imageData, width, height);
+    const quantized = quantizeImageDataFlat(imageData, width, height, colors);
     const result = [];
     for (let y = 0; y < height; y += 1) {
         const row = [];
         for (let x = 0; x < width; x += 1) {
             const offset = (y * width + x) * 4;
-            row.push(nearestPaletteColor(
-                resized.data[offset],
-                resized.data[offset + 1],
-                resized.data[offset + 2],
-                palette,
-            ));
+            row.push([
+                quantized[offset],
+                quantized[offset + 1],
+                quantized[offset + 2],
+            ]);
         }
         result.push(row);
     }
     return result;
+}
+
+export function quantizeImageDataFlat(imageData, width, height, colors = DEFAULT_PALETTE) {
+    if (!imageData || imageData.width < 1 || imageData.height < 1) {
+        throw new Error("Image data must have positive dimensions");
+    }
+    if (width < 1 || height < 1) {
+        throw new Error("Preview dimensions must be positive");
+    }
+
+    const palette = normalizePalette(colors);
+    const resized = resizeImageDataArea(imageData, width, height);
+    const result = new Uint8ClampedArray(width * height * 4);
+    for (let offset = 0; offset < result.length; offset += 4) {
+        const color = nearestPaletteColor(
+            resized.data[offset],
+            resized.data[offset + 1],
+            resized.data[offset + 2],
+            palette,
+        );
+        result[offset] = color[0];
+        result[offset + 1] = color[1];
+        result[offset + 2] = color[2];
+        result[offset + 3] = 255;
+    }
+    return result;
+}
+
+export function renderQuantizedGrid(context, quantized, width, height) {
+    const canvasWidth = context.canvas.width;
+    const canvasHeight = context.canvas.height;
+    const image = context.createImageData(canvasWidth, canvasHeight);
+    const cellSize = Math.min(400 / Math.max(width, 1), 400 / Math.max(height, 1));
+    for (let pixelY = 0; pixelY < canvasHeight; pixelY += 1) {
+        const gridY = Math.floor((pixelY - 10) / cellSize);
+        if (gridY < 0 || gridY >= height) continue;
+        for (let pixelX = 0; pixelX < canvasWidth; pixelX += 1) {
+            const gridX = Math.floor((pixelX - 10) / cellSize);
+            if (gridX < 0 || gridX >= width) continue;
+            const sourceOffset = (gridY * width + gridX) * 4;
+            const targetOffset = (pixelY * canvasWidth + pixelX) * 4;
+            image.data[targetOffset] = quantized[sourceOffset];
+            image.data[targetOffset + 1] = quantized[sourceOffset + 1];
+            image.data[targetOffset + 2] = quantized[sourceOffset + 2];
+            image.data[targetOffset + 3] = 255;
+        }
+    }
+    context.putImageData(image, 0, 0);
+    context.strokeStyle = "#d0d0d0";
+    context.strokeRect(10, 10, width * cellSize, height * cellSize);
 }
 
 export class PreviewController {
@@ -233,19 +289,8 @@ export class PreviewController {
             this.sourceCanvas.width,
             this.sourceCanvas.height,
         );
-        const quantized = quantizeImageData(imageData, this.width, this.height, this.palette);
-        const cellSize = Math.min(400 / Math.max(this.width, 1), 400 / Math.max(this.height, 1));
-        const baseX = 10;
-        const baseY = 10;
-        for (let y = 0; y < this.height; y += 1) {
-            for (let x = 0; x < this.width; x += 1) {
-                const [red, green, blue] = quantized[y][x];
-                context.fillStyle = `rgb(${red}, ${green}, ${blue})`;
-                context.fillRect(baseX + x * cellSize, baseY + y * cellSize, cellSize, cellSize);
-            }
-        }
-        context.strokeStyle = "#d0d0d0";
-        context.strokeRect(baseX, baseY, this.width * cellSize, this.height * cellSize);
+        const quantized = quantizeImageDataFlat(imageData, this.width, this.height, this.palette);
+        renderQuantizedGrid(context, quantized, this.width, this.height);
         this.previewCounter.textContent = `Frame: ${this.frameNumber} / ${this.totalFrames ?? "?"}`;
         if (typeof this.video.requestVideoFrameCallback === "function") {
             this.animationFrame = this.video.requestVideoFrameCallback((_, metadata) => this.drawFrame(metadata));

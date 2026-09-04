@@ -8,12 +8,12 @@
 <body>
   <canvas id="preview" width="420" height="420"></canvas>
   <script type="module">
-    import { quantizeImageData } from "./preview.js";
+    import { quantizeImageDataFlat, renderQuantizedGrid } from "./preview.js";
 
     const SOURCE_WIDTH = 640;
     const SOURCE_HEIGHT = 360;
     const DIMENSIONS = [16, 32, 64, 96, 128];
-    const ITERATIONS = Number(new URLSearchParams(window.location.search).get("iterations") || 3);
+    const ITERATIONS = Number(new URLSearchParams(window.location.search).get("iterations") || 10);
     const palette = [[0, 0, 0], [255, 255, 255], [128, 128, 128]];
     const source = new ImageData(SOURCE_WIDTH, SOURCE_HEIGHT);
     for (let y = 0; y < SOURCE_HEIGHT; y += 1) {
@@ -26,41 +26,32 @@
       }
     }
 
-    const checksum = (quantized) => quantized.reduce(
-      (total, row) => total + row.reduce(
-        (rowTotal, pixel) => rowTotal + pixel.reduce((sum, value) => sum + value, 0),
-        0,
-      ),
-      0,
-    );
+    const checksum = (quantized) => {
+      let total = 0;
+      for (let index = 0; index < quantized.length; index += 4) {
+        total += quantized[index] + quantized[index + 1] + quantized[index + 2];
+      }
+      return total;
+    };
 
     const results = [];
     const canvas = document.querySelector("#preview");
     const context = canvas.getContext("2d");
     for (const dimension of DIMENSIONS) {
       for (let warmup = 0; warmup < 3; warmup += 1) {
-        quantizeImageData(source, dimension, dimension, palette);
+        quantizeImageDataFlat(source, dimension, dimension, palette);
       }
       const processTimes = [];
       const renderTimes = [];
       let lastQuantized;
       for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
         let start = performance.now();
-        lastQuantized = quantizeImageData(source, dimension, dimension, palette);
+        lastQuantized = quantizeImageDataFlat(source, dimension, dimension, palette);
         processTimes.push(performance.now() - start);
 
         start = performance.now();
         context.clearRect(0, 0, canvas.width, canvas.height);
-        const cellSize = Math.min(400 / dimension, 400 / dimension);
-        for (let y = 0; y < dimension; y += 1) {
-          for (let x = 0; x < dimension; x += 1) {
-            const [red, green, blue] = lastQuantized[y][x];
-            context.fillStyle = `rgb(${red}, ${green}, ${blue})`;
-            context.fillRect(10 + x * cellSize, 10 + y * cellSize, cellSize, cellSize);
-          }
-        }
-        context.strokeStyle = "#d0d0d0";
-        context.strokeRect(10, 10, dimension * cellSize, dimension * cellSize);
+        renderQuantizedGrid(context, lastQuantized, dimension, dimension);
         renderTimes.push(performance.now() - start);
       }
       const processMs = processTimes.reduce((sum, value) => sum + value, 0) / ITERATIONS;

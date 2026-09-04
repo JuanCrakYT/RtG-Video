@@ -92,7 +92,7 @@ def benchmark_dimension(root, source, width, height, iterations):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--iterations", type=int, default=3)
+    parser.add_argument("--iterations", type=int, default=10)
     args = parser.parse_args()
     source = synthetic_frame()
     root = tk.Tk()

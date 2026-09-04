@@ -16,7 +16,7 @@ def run_python(iterations):
 
 
 def main():
-    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+    iterations = int(sys.argv[1]) if len(sys.argv) > 1 else 10
     print(json.dumps({"python": run_python(iterations)}, indent=2))
     print("Browser benchmark: open tmp/benchmark-browser.html with the browser automation harness.")
 
