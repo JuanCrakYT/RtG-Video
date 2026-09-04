@@ -292,12 +292,12 @@ python tmp/benchmark_python_playback.py --frames 60
 The measured 60-frame results on this machine were:
 
 | Resolution | Python ms/frame | Python FPS | JS ms/frame | JS FPS | JS skipped |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 16x16 | 7.54 | 129.77 | 8.81 | 28.65 | 1 |
-| 32x32 | 24.99 | 39.60 | 8.08 | 29.88 | 0 |
-| 64x64 | 90.45 | 10.99 | 7.92 | 29.90 | 0 |
-| 96x96 | 208.67 | 4.76 | 8.48 | 29.86 | 0 |
-| 128x128 | 353.98 | 2.81 | 8.78 | 29.80 | 0 |
+| ---------- | --------------: | ---------: | ----------: | -----: | ---------: |
+| 16x16      |            7.54 |     129.77 |        8.81 |  28.65 |          1 |
+| 32x32      |           24.99 |      39.60 |        8.08 |  29.88 |          0 |
+| 64x64      |           90.45 |      10.99 |        7.92 |  29.90 |          0 |
+| 96x96      |          208.67 |       4.76 |        8.48 |  29.86 |          0 |
+| 128x128    |          353.98 |       2.81 |        8.78 |  29.80 |          0 |
 
 Python uses the productive OpenCV quantizer and Tkinter rectangle renderer;
 JavaScript uses the experimental Canvas 2D `putImageData()` renderer. The
@@ -328,13 +328,13 @@ browser-native timing and rendering where that improves measured performance:
 
 | Area                                                           | Status      | Notes                                                                                                                                                |
 | -------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Preview window, controls, pause, resume, close                 | Complete    | Browser entry point uses the selected video, configured dimensions, palette, and native video audio. Python remains a fallback.                       |
+| Preview window, controls, pause, resume, close                 | Complete    | Browser entry point uses the selected video, configured dimensions, palette, and native video audio. Python remains a fallback.                      |
 | Width/Height validation and pixel rendering                    | Complete    | Values are clamped to `2-128`; canvas cells use deterministic area resizing and palette quantization.                                                |
 | Video loading and error handling                               | Complete    | GUI uses a loopback-only tokenized URL; metadata/error events and token cleanup are handled by the browser entry point.                              |
 | Frame scheduling and frame counter                             | Adapted     | Uses `requestVideoFrameCallback` when available, with `requestAnimationFrame` fallback; browser APIs do not expose OpenCV's exact total-frame count. |
 | Audio synchronization                                          | Adapted     | Uses the native video audio clock instead of MoviePy temporary WAV extraction and Pygame.                                                            |
 | OpenCV capture seeking and FPS timing                          | Not literal | These are Python/OpenCV APIs; browser media timing is the deliberate equivalent.                                                                     |
-| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Fallback    | The Python implementation remains available; no Python or audio dependency has been removed.                                                       |
+| Python/Tkinter dialogs, Toplevel lifecycle, and Pygame cleanup | Fallback    | The Python implementation remains available; no Python or audio dependency has been removed.                                                         |
 
 `tmp/` remains the validation laboratory; its benchmarks and fixtures are not
 runtime dependencies.

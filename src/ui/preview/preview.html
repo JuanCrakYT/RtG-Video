@@ -1,15 +1,29 @@
 <!doctype html>
 <html lang="en">
+
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>RtG Preview</title>
     <style>
-        body { background: #f5f5f5; color: #212121; font-family: "Segoe UI", sans-serif; margin: 0; }
-        #source { display: none; }
-        #status { margin: 16px; text-align: center; }
+        body {
+            background: #f5f5f5;
+            color: #212121;
+            font-family: "Segoe UI", sans-serif;
+            margin: 0;
+        }
+
+        #source {
+            display: none;
+        }
+
+        #status {
+            margin: 16px;
+            text-align: center;
+        }
     </style>
 </head>
+
 <body>
     <video id="source" controls playsinline preload="auto"></video>
     <p id="status" role="status">Loading preview...</p>
@@ -69,4 +83,5 @@
         start().catch(showError);
     </script>
 </body>
+
 </html>

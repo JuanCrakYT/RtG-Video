@@ -5,9 +5,9 @@ function makeContext() {
     return {
         canvas: { width: 420, height: 420 },
         createImageData: (width, height) => ({ data: new Uint8ClampedArray(width * height * 4) }),
-        putImageData() {},
-        clearRect() {},
-        strokeRect() {},
+        putImageData() { },
+        clearRect() { },
+        strokeRect() { },
     };
 }
 
@@ -17,10 +17,10 @@ function makeVideo({ withVideoFrameCallback }) {
         videoWidth: 2,
         videoHeight: 2,
         dataset: {},
-        play: async () => {},
+        play: async () => { },
         pause() { this.paused = true; },
-        addEventListener() {},
-        removeEventListener() {},
+        addEventListener() { },
+        removeEventListener() { },
     };
     if (withVideoFrameCallback) {
         video.requestVideoFrameCallback = (callback) => {
@@ -42,7 +42,7 @@ function prepareController(video, windowTarget) {
     controller.previewCounter = { textContent: "" };
     controller.sourceCanvas = { width: 2, height: 2 };
     controller.sourceContext = {
-        drawImage() {},
+        drawImage() { },
         getImageData: () => ({
             width: 2,
             height: 2,
@@ -61,7 +61,7 @@ function prepareController(video, windowTarget) {
 const videoCallback = makeVideo({ withVideoFrameCallback: true });
 const videoWindow = {
     requestAnimationFrame() { throw new Error("fallback should not be used"); },
-    cancelAnimationFrame() {},
+    cancelAnimationFrame() { },
 };
 const videoController = prepareController(videoCallback, videoWindow);
 videoController.drawFrame({ presentedFrames: 4 });
