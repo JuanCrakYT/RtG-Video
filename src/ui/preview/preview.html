@@ -34,8 +34,10 @@
         const source = document.querySelector("#source");
         const status = document.querySelector("#status");
         source.playsInline = true;
+        source.autoplay = true;
         const token = query.get("video")?.split("/").pop();
         let controller = null;
+        let closing = false;
 
         function parsePalette() {
             try {
@@ -47,6 +49,28 @@
 
         function releaseVideo() {
             if (token) navigator.sendBeacon(`/release/${encodeURIComponent(token)}`, "");
+        }
+
+        function sendPreviewData(data) {
+            window.dispatchEvent(new CustomEvent("preview-data", { detail: data }));
+            document.body.dataset.previewData = JSON.stringify(data);
+            if (token) navigator.sendBeacon(
+                `/event/${encodeURIComponent(token)}`,
+                new Blob([JSON.stringify(data)], { type: "application/json" }),
+            );
+        }
+
+        function sendPreviewClose() {
+            if (closing) return;
+            closing = true;
+            const data = { type: "close" };
+            window.dispatchEvent(new CustomEvent("preview-close", { detail: data }));
+            document.body.dataset.previewClosed = "true";
+            if (token) navigator.sendBeacon(
+                `/event/${encodeURIComponent(token)}`,
+                new Blob([JSON.stringify(data)], { type: "application/json" }),
+            );
+            releaseVideo();
         }
 
         function showError(error) {
@@ -66,20 +90,22 @@
                 video: source,
                 width: Number(query.get("width")),
                 height: Number(query.get("height")),
+                frameCount: Number(query.get("frame_count")),
                 palette: parsePalette(),
                 popup: false,
                 onError: showError,
-                onClose: releaseVideo,
+                onData: sendPreviewData,
+                onClose: sendPreviewClose,
             });
             window.previewController = controller;
             controller.open();
             document.body.dataset.previewStarted = "true";
             status.textContent = "Preview playing. Use the controls in the preview window.";
+            window.addEventListener("preview-close", () => window.close(), { once: true });
         }
 
         window.addEventListener("beforeunload", () => {
-            controller?.close();
-            releaseVideo();
+            if (!closing) controller?.close();
         }, { once: true });
         start().catch(showError);
     </script>

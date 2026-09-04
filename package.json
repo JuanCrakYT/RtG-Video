@@ -1,0 +1,13 @@
+{
+    "name": "rtg-video-preview",
+    "private": true,
+    "type": "module",
+    "description": "Electron host for the RtG Video JavaScript Preview",
+    "main": "src/ui/preview/electron_main.cjs",
+    "scripts": {
+        "test:preview": "npm --prefix tests/js test"
+    },
+    "devDependencies": {
+        "electron": "^38.1.0"
+    }
+}

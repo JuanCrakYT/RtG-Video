@@ -9,8 +9,9 @@ from tkinter import ttk, filedialog, messagebox, colorchooser
 from pathlib import Path
 from typing import Optional, Callable
 import os
+import shutil
+import subprocess
 import tempfile
-import webbrowser
 
 from src.video.processing import DEFAULT_PALETTE, normalize_palette, quantize_frame
 from src.ui.base64 import encode_latest_display
@@ -75,6 +76,8 @@ class RtGDisplayGUI:
         self.preview_counter_label = None
         self.preview_toggle_btn = None
         self.preview_server = None
+        self.preview_process = None
+        self.preview_token = None
         self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
         self.palette_combo = None
         
@@ -651,23 +654,63 @@ class RtGDisplayGUI:
         self.preview_window = None
 
     def _close_application(self):
-        """Close the Python fallback and the local browser Preview server."""
+        """Close preview windows and the local Preview server."""
         self._close_preview()
+        self._close_javascript_preview()
         if self.preview_server is not None:
             self.preview_server.close()
             self.preview_server = None
         self.root.destroy()
 
+    def _close_javascript_preview(self):
+        """Close the independent Electron Preview process, if it is running."""
+        if self.preview_server is not None and self.preview_token is not None:
+            self.preview_server.send_event(
+                self.preview_token,
+                {"type": "close", "source": "main-window"},
+            )
+        if self.preview_process is None:
+            self.preview_token = None
+            return
+        if self.preview_process.poll() is None:
+            self.preview_process.terminate()
+            try:
+                self.preview_process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self.preview_process.kill()
+        self.preview_process = None
+        self.preview_token = None
+
     def _open_javascript_preview(self, video_path: Path):
-        """Open the production browser Preview through a tokenized local URL."""
+        """Open the production JavaScript Preview in an independent Electron window."""
+        self._close_javascript_preview()
         if self.preview_server is None:
             self.preview_server = PreviewServer()
         token = self.preview_server.register_video(video_path)
-        width = getattr(self, "width_value_slider").get()
-        height = getattr(self, "height_value_slider").get()
+        self.preview_token = token
+        width = max(2, min(128, int(getattr(self, "width_value").get())))
+        height = max(2, min(128, int(getattr(self, "height_value").get())))
         url = self.preview_server.url(token, width, height, self.palette_colors)
-        if not webbrowser.open_new(url):
-            raise RuntimeError("The system browser could not be opened")
+        project_root = Path(__file__).resolve().parents[2]
+        electron_entry = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
+        local_electron = project_root / "node_modules" / ".bin" / "electron.cmd"
+        if local_electron.is_file():
+            command = [str(local_electron), str(electron_entry)]
+        else:
+            npx = shutil.which("npx.cmd") or shutil.which("npx")
+            if npx is None:
+                raise RuntimeError("Node.js and Electron are required for the JavaScript Preview")
+            command = [npx, "--no-install", "electron", str(electron_entry)]
+        environment = os.environ.copy()
+        environment["RTG_PREVIEW_URL"] = url
+        try:
+            self.preview_process = subprocess.Popen(
+                command,
+                cwd=str(project_root),
+                env=environment,
+            )
+        except OSError as error:
+            raise RuntimeError(f"Could not start Electron: {error}") from error
 
     def _toggle_preview_pause(self):
         """Toggle pause/play state for the preview loop."""

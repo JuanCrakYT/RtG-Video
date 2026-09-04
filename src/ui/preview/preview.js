@@ -123,14 +123,16 @@ export function processVideoFrame(video, sourceCanvas, sourceContext, width, hei
 }
 
 export class PreviewController {
-    constructor({ video, width, height, palette = DEFAULT_PALETTE, windowTarget = window, popup = true, onClose = null, onError = null }) {
+    constructor({ video, width, height, frameCount = null, palette = DEFAULT_PALETTE, windowTarget = window, popup = true, onClose = null, onData = null, onError = null }) {
         this.video = video;
         this.width = clampDimension(width);
         this.height = clampDimension(height);
         this.palette = normalizePalette(palette);
+        this.frameCount = frameCount;
         this.windowTarget = windowTarget;
         this.popup = popup;
         this.onClose = onClose;
+        this.onData = onData;
         this.onError = onError;
         this.previewWindow = null;
         this.ownsPreviewWindow = false;
@@ -159,7 +161,7 @@ export class PreviewController {
         if (!this.previewWindow) throw new Error("The preview window was blocked by the browser");
         const document = this.previewWindow.document;
         if (this.popup) document.body.replaceChildren();
-        document.title = `RtG Preview - ${this.video.dataset.name || "video"}`;
+        document.title = `RtG Video Preview - ${this.video.dataset.name || "video"}`;
         document.body.style.margin = "0";
         document.body.style.background = "#f5f5f5";
         document.body.style.fontFamily = "Segoe UI, sans-serif";
@@ -197,7 +199,12 @@ export class PreviewController {
         controls.appendChild(close);
         document.body.appendChild(controls);
         this.totalFrames = Number.isFinite(this.video.duration) && this.video.duration > 0 && this.video.dataset.fps
-            ? Math.round(this.video.duration * Number(this.video.dataset.fps)) : null;
+            ? Math.round(this.video.duration * Number(this.video.dataset.fps)) : Number(this.frameCount) || null;
+        this.onData?.({
+            Width: this.width,
+            Height: this.height,
+            "Frame-Count": this.totalFrames,
+        });
         this.video.addEventListener("error", this.handleVideoError, { once: true });
         this.video.currentTime = 0;
         this.video.loop = true;

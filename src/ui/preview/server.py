@@ -5,6 +5,8 @@ from pathlib import Path
 from secrets import token_urlsafe
 from threading import Thread
 from urllib.parse import unquote, urlparse
+from json import dumps, loads
+from urllib.request import Request, urlopen
 import mimetypes
 try:
     import cv2
@@ -17,6 +19,7 @@ class PreviewServer:
         self.root = Path(__file__).resolve().parent
         self.videos = {}
         self.video_metadata = {}
+        self.events = {}
         owner = self
 
         class Handler(SimpleHTTPRequestHandler):
@@ -39,6 +42,18 @@ class PreviewServer:
 
             def do_POST(self):
                 path = unquote(urlparse(self.path).path)
+                if path.startswith("/event/"):
+                    token = path.removeprefix("/event/")
+                    length = int(self.headers.get("Content-Length", "0"))
+                    try:
+                        event = loads(self.rfile.read(length).decode("utf-8"))
+                    except (ValueError, UnicodeDecodeError):
+                        self.send_error(400)
+                        return
+                    owner.events[token] = event
+                    self.send_response(204)
+                    self.end_headers()
+                    return
                 if path.startswith("/release/"):
                     owner.videos.pop(path.removeprefix("/release/"), None)
                     self.send_response(204)
@@ -67,15 +82,19 @@ class PreviewServer:
                 self.send_header("Content-Length", str(end - start + 1))
                 self.send_header("Accept-Ranges", "bytes")
                 self.end_headers()
-                with video.open("rb") as source:
-                    source.seek(start)
-                    remaining = end - start + 1
-                    while remaining:
-                        chunk = source.read(min(1024 * 1024, remaining))
-                        if not chunk:
-                            break
-                        self.wfile.write(chunk)
-                        remaining -= len(chunk)
+                try:
+                    with video.open("rb") as source:
+                        source.seek(start)
+                        remaining = end - start + 1
+                        while remaining:
+                            chunk = source.read(min(1024 * 1024, remaining))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            remaining -= len(chunk)
+                except (ConnectionResetError, BrokenPipeError):
+                    # Chromium may cancel a media range request during close/reopen.
+                    pass
 
             def log_message(self, *_args):
                 return
@@ -91,23 +110,44 @@ class PreviewServer:
         token = token_urlsafe(24)
         self.videos[token] = video
         fps = 0
+        frame_count = 0
         if cv2 is not None:
             capture = cv2.VideoCapture(str(video))
             fps = capture.get(cv2.CAP_PROP_FPS) if capture.isOpened() else 0
+            frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) if capture.isOpened() else 0
             capture.release()
-        self.video_metadata[token] = {"name": video.name, "fps": fps if fps > 0 else ""}
+        self.video_metadata[token] = {
+            "name": video.name,
+            "fps": fps if fps > 0 else "",
+            "frame_count": frame_count if frame_count > 0 else "",
+        }
         return token
 
     def url(self, token, width, height, palette):
-        from json import dumps
         from urllib.parse import quote
         metadata = self.video_metadata.get(token, {})
-        query = f"video=/video/{quote(token)}&name={quote(metadata.get('name', 'video'))}&fps={metadata.get('fps', '')}&width={int(width)}&height={int(height)}&palette={quote(dumps(palette, separators=(',', ':')))}"
+        query = f"video=/video/{quote(token)}&name={quote(metadata.get('name', 'video'))}&fps={metadata.get('fps', '')}&frame_count={metadata.get('frame_count', '')}&width={int(width)}&height={int(height)}&palette={quote(dumps(palette, separators=(',', ':')))}"
         return f"http://127.0.0.1:{self.httpd.server_port}/preview.html?{query}"
+
+    def send_event(self, token, event):
+        """Send a lifecycle event to the local Preview server."""
+        request = Request(
+            f"http://127.0.0.1:{self.httpd.server_port}/event/{token}",
+            data=dumps(event).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(request, timeout=1):
+                pass
+        except OSError:
+            # The Preview may already have closed its server connection.
+            pass
 
     def close(self):
         self.videos.clear()
         self.video_metadata.clear()
+        self.events.clear()
         self.httpd.shutdown()
         self.httpd.server_close()
         self.thread.join(timeout=2)
