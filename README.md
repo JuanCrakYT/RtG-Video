@@ -291,12 +291,12 @@ Open `tmp/benchmark-browser.html` from a local HTTP server to measure the JavaSc
 Final synthetic comparison, ten iterations per size after the typed-buffer and `putImageData` optimization:
 
 | Resolution | Python total | JavaScript total | Python FPS | JavaScript FPS | Speedup |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 16x16 | 6.84 ms | 4.16 ms | 146.30 | 240.38 | 1.64x |
-| 32x32 | 22.27 ms | 3.65 ms | 44.91 | 273.97 | 6.10x |
-| 64x64 | 85.68 ms | 4.21 ms | 11.67 | 237.53 | 20.35x |
-| 96x96 | 197.30 ms | 5.40 ms | 5.07 | 185.19 | 36.54x |
-| 128x128 | 346.82 ms | 4.88 ms | 2.88 | 204.92 | 71.07x |
+| ---------- | -----------: | ---------------: | ---------: | -------------: | ------: |
+| 16x16      |      6.84 ms |          4.16 ms |     146.30 |         240.38 |   1.64x |
+| 32x32      |     22.27 ms |          3.65 ms |      44.91 |         273.97 |   6.10x |
+| 64x64      |     85.68 ms |          4.21 ms |      11.67 |         237.53 |  20.35x |
+| 96x96      |    197.30 ms |          5.40 ms |       5.07 |         185.19 |  36.54x |
+| 128x128    |    346.82 ms |          4.88 ms |       2.88 |         204.92 |  71.07x |
 
 The JavaScript checksum now matches Python at all five resolutions, including the previously divergent `96x96` case. The optimization uses a flat `Uint8ClampedArray` for quantized RGBA output and one `putImageData` call per frame instead of one `fillRect` call per pixel. These are synthetic measurements, not real-video results; no CPU, memory, dropped-frame, or real-video claim is made. No Python code has been replaced.
 
