@@ -33,7 +33,7 @@ This makes the physical display independent from the animation itself.
 ## Features
 
 * **Video input** — Load video files and process them frame by frame.
-* **Configurable canvas** — Choose the width and height of the pixel display.
+* **Configurable canvas** — Choose the width and height of the pixel display with sliders or numeric fields from 2 to 128.
 * **Palette support** — Convert video frames to a configurable RGB palette.
 * **Pixel matrix generation** — Create a reusable 2D matrix of controllable pixels.
 * **Animation sequences** — Represent video playback as a sequence of timed frames.
@@ -205,6 +205,8 @@ The GUI currently provides configuration for:
 * color palette management
 * video preview
 * display generation
+
+Width and Height can be adjusted with either their sliders or the numeric fields beside them. Both dimensions accept values from `2` to `128`.
 
 The preview system can display the source video after it has been reduced to the selected pixel resolution.
 
