@@ -276,6 +276,30 @@ The current audit estimates the experimental translation at approximately 75% be
 
 The translation is therefore not yet a drop-in replacement. The Python Preview remains the production implementation, while `tmp/` is the validation laboratory.
 
+## Preview Performance Laboratory
+
+The migration goal is now measured Preview performance, not line-for-line language parity. The Python Preview's likely bottlenecks are the Python-level per-cell quantization loop and one Tkinter canvas rectangle operation per output pixel on every scheduled frame. The JavaScript experiment uses browser video timing and Canvas 2D so that the same work can be measured separately as processing and rendering.
+
+Run the synthetic benchmark with:
+
+```bash
+python tmp/benchmark_python.py --iterations 3
+```
+
+Open `tmp/benchmark-browser.html` from a local HTTP server to measure the JavaScript Canvas 2D path. Both benchmarks use a deterministic `640x360` synthetic source, the default three-color palette, and `16x16`, `32x32`, `64x64`, `96x96`, and `128x128` output sizes. The reported FPS is derived from measured processing plus rendering time; CPU, memory, and dropped-frame metrics are not reported because this benchmark cannot measure them reliably in the current environment.
+
+Initial synthetic baseline, three iterations per size:
+
+| Resolution | Python total | JavaScript total | Python FPS | JavaScript FPS |
+| --- | ---: | ---: | ---: | ---: |
+| 16x16 | 6.37 ms | 2.80 ms | 156.96 | 357.14 |
+| 32x32 | 21.88 ms | 2.47 ms | 45.70 | 405.41 |
+| 64x64 | 86.78 ms | 5.67 ms | 11.52 | 176.47 |
+| 96x96 | 190.46 ms | 11.97 ms | 5.25 | 83.57 |
+| 128x128 | 338.05 ms | 11.97 ms | 2.96 | 83.57 |
+
+These are synthetic measurements, not real-video results. JavaScript is approximately 28.2x faster at `128x128` in this run, but the `96x96` checksum differs between implementations (`3530736` Python versus `3531117` JavaScript), so resize equivalence still needs investigation before any production migration. No Python code has been replaced.
+
 ### Palette Quantization
 
 RtG Video supports configurable RGB palettes.

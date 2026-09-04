@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RtG Preview Benchmark</title>
+</head>
+<body>
+  <canvas id="preview" width="420" height="420"></canvas>
+  <script type="module">
+    import { quantizeImageData } from "./preview.js";
+
+    const SOURCE_WIDTH = 640;
+    const SOURCE_HEIGHT = 360;
+    const DIMENSIONS = [16, 32, 64, 96, 128];
+    const ITERATIONS = Number(new URLSearchParams(window.location.search).get("iterations") || 3);
+    const palette = [[0, 0, 0], [255, 255, 255], [128, 128, 128]];
+    const source = new ImageData(SOURCE_WIDTH, SOURCE_HEIGHT);
+    for (let y = 0; y < SOURCE_HEIGHT; y += 1) {
+      for (let x = 0; x < SOURCE_WIDTH; x += 1) {
+        const offset = (y * SOURCE_WIDTH + x) * 4;
+        source.data[offset] = (x * 3 + y * 5) % 256;
+        source.data[offset + 1] = (x * 7 + y * 11) % 256;
+        source.data[offset + 2] = (x * 13 + y * 17) % 256;
+        source.data[offset + 3] = 255;
+      }
+    }
+
+    const checksum = (quantized) => quantized.reduce(
+      (total, row) => total + row.reduce(
+        (rowTotal, pixel) => rowTotal + pixel.reduce((sum, value) => sum + value, 0),
+        0,
+      ),
+      0,
+    );
+
+    const results = [];
+    const canvas = document.querySelector("#preview");
+    const context = canvas.getContext("2d");
+    for (const dimension of DIMENSIONS) {
+      for (let warmup = 0; warmup < 3; warmup += 1) {
+        quantizeImageData(source, dimension, dimension, palette);
+      }
+      const processTimes = [];
+      const renderTimes = [];
+      let lastQuantized;
+      for (let iteration = 0; iteration < ITERATIONS; iteration += 1) {
+        let start = performance.now();
+        lastQuantized = quantizeImageData(source, dimension, dimension, palette);
+        processTimes.push(performance.now() - start);
+
+        start = performance.now();
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        const cellSize = Math.min(400 / dimension, 400 / dimension);
+        for (let y = 0; y < dimension; y += 1) {
+          for (let x = 0; x < dimension; x += 1) {
+            const [red, green, blue] = lastQuantized[y][x];
+            context.fillStyle = `rgb(${red}, ${green}, ${blue})`;
+            context.fillRect(10 + x * cellSize, 10 + y * cellSize, cellSize, cellSize);
+          }
+        }
+        context.strokeStyle = "#d0d0d0";
+        context.strokeRect(10, 10, dimension * cellSize, dimension * cellSize);
+        renderTimes.push(performance.now() - start);
+      }
+      const processMs = processTimes.reduce((sum, value) => sum + value, 0) / ITERATIONS;
+      const renderMs = renderTimes.reduce((sum, value) => sum + value, 0) / ITERATIONS;
+      const totalMs = processMs + renderMs;
+      results.push({
+        width: dimension,
+        height: dimension,
+        pixels: dimension * dimension,
+        iterations: ITERATIONS,
+        process_ms: processMs,
+        render_ms: renderMs,
+        total_ms: totalMs,
+        fps: totalMs ? 1000 / totalMs : null,
+        checksum: checksum(lastQuantized),
+      });
+    }
+    window.benchmarkResults = {
+      runtime: "javascript-browser-canvas-2d",
+      source: { width: SOURCE_WIDTH, height: SOURCE_HEIGHT },
+      palette,
+      results,
+    };
+    document.body.dataset.ready = "true";
+  </script>
+</body>
+</html>
