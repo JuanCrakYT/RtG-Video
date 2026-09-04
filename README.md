@@ -262,7 +262,7 @@ To try the visual experiment, serve the repository with a local HTTP server and 
 
 ### Preview translation audit status
 
-The current audit estimates the experimental translation at approximately 75% behavioral coverage:
+The behavioral audit remains partial; this percentage is not a performance score. The current experimental translation preserves the visible Preview workflow while intentionally using browser-native timing and rendering where that improves measured performance:
 
 | Area                                                           | Status      | Notes                                                                                                                                                |
 | -------------------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
