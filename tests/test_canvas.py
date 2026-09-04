@@ -10,7 +10,7 @@ from src.rtg.uuid import reset_uuid_manager
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_PATH = ROOT / "assets" / "pixel" / "pixel.json"
+TEMPLATE_PATH = ROOT / "assets" / "builds" / "pixel" / "pixel.json"
 
 
 def build_canvas(width: int, height: int):
@@ -58,7 +58,21 @@ def test_3x2_physical_canvas():
 
     for (x, y), pixel in matrix.pixels.items():
         assert matrix.get_pixel(x, y) is pixel
-        assert positions[pixel.uuid]["cframe"][:3] == [x * 1.0, y * 1.0, 0.0]
+        assert positions[pixel.uuid]["cframe"][:3] == [
+            (x - 1) * 1.0,
+            y * 1.0 + 0.75,
+            0.0,
+        ]
+
+
+def test_canvas_positions_are_centered_and_raised():
+    matrix = build_canvas(3, 1)
+    positions = matrix.build.blocks[matrix.base_index].properties["EphemeralAttachments"]
+
+    assert [
+        positions[matrix.get_pixel(x, 0).uuid]["cframe"][:3]
+        for x in range(3)
+    ] == [[-1.0, 0.75, 0.0], [0.0, 0.75, 0.0], [1.0, 0.75, 0.0]]
 
 
 def test_2x2_export_is_one_physical_build():

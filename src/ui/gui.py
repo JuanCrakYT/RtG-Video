@@ -5,7 +5,7 @@ Professional and minimalist interface for video loading and canvas configuration
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, colorchooser
+from tkinter import ttk, filedialog, colorchooser
 from pathlib import Path
 from typing import Optional, Callable
 import os
@@ -83,6 +83,7 @@ class RtGDisplayGUI:
         
         # Build GUI
         self._build_gui()
+        self._center_window(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._close_application)
 
     @staticmethod
@@ -109,6 +110,95 @@ class RtGDisplayGUI:
                 window.iconphoto(True, window._rtg_logo_image)
             except tk.TclError:
                 pass
+
+    @staticmethod
+    def _center_window(window: tk.Misc) -> None:
+        """Center a realized window on the current screen."""
+        window.update_idletasks()
+        width = window.winfo_width()
+        height = window.winfo_height()
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        x = max((screen_width - width) // 2, 0)
+        y = max((screen_height - height) // 2, 0)
+        window.geometry(f"{width}x{height}+{x}+{y}")
+
+    def _show_message(self, title: str, message: str, message_type: str = "info") -> None:
+        """Show a modal message with a left-aligned button to copy its exact body."""
+        dialog = tk.Toplevel(self.root)
+        self._set_window_icon(dialog)
+        dialog.title(title)
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.bg_primary)
+
+        content = tk.Frame(dialog, bg=self.bg_primary, padx=24, pady=20)
+        content.pack(fill=tk.BOTH, expand=True)
+
+        message_label = tk.Message(
+            content,
+            text=message,
+            width=520,
+            justify=tk.LEFT,
+            bg=self.bg_primary,
+            fg=self.text_primary,
+            font=('Segoe UI', 10),
+        )
+        message_label.pack(fill=tk.BOTH, expand=True)
+
+        button_frame = tk.Frame(content, bg=self.bg_primary)
+        button_frame.pack(fill=tk.X, pady=(18, 0))
+
+        def copy_message():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(message)
+            copy_button.config(text="Copied")
+
+        copy_button = tk.Button(
+            button_frame,
+            text="Copy",
+            command=copy_message,
+            bg=self.border_color,
+            fg=self.text_primary,
+            font=('Segoe UI', 10),
+            padx=15,
+            pady=8,
+            border=0,
+            cursor='hand2',
+            activebackground='#D0D0D0',
+        )
+        copy_button.pack(side=tk.LEFT)
+
+        tk.Button(
+            button_frame,
+            text="OK",
+            command=dialog.destroy,
+            bg=self.accent_color,
+            fg='white',
+            font=('Segoe UI', 10, 'bold'),
+            padx=20,
+            pady=8,
+            border=0,
+            cursor='hand2',
+            activebackground=self.accent_hover,
+        ).pack(side=tk.RIGHT)
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.bind("<Return>", lambda _event: dialog.destroy())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        self._center_window(dialog)
+        dialog.grab_set()
+        dialog.focus_set()
+        self.root.wait_window(dialog)
+
+    def _showinfo(self, title: str, message: str) -> None:
+        self._show_message(title, message, "info")
+
+    def _showwarning(self, title: str, message: str) -> None:
+        self._show_message(title, message, "warning")
+
+    def _showerror(self, title: str, message: str) -> None:
+        self._show_message(title, message, "error")
     
     def _configure_style(self):
         """Configure the visual style."""
@@ -480,7 +570,7 @@ class RtGDisplayGUI:
             return
         selected_index = self.palette_combo.current()
         if selected_index <= 0:
-            messagebox.showinfo("Required color", "Black is always required in the palette.")
+            self._showinfo("Required color", "Black is always required in the palette.")
             return
         self.palette_colors.pop(selected_index)
         self._refresh_palette_combo()
@@ -498,7 +588,7 @@ class RtGDisplayGUI:
         # Copy button
         copy_btn = tk.Button(
             left_frame,
-            text="📋 Copy RtG",
+            text="📋 Copy JSON",
             command=self._on_copy,
             bg=self.border_color,
             fg=self.text_primary,
@@ -736,7 +826,7 @@ class RtGDisplayGUI:
     def _start_preview_audio(self, video_path: Path):
         """Extract and start the video's audio, if the optional audio stack is available."""
         if pygame is None or VideoFileClip is None:
-            messagebox.showwarning(
+            self._showwarning(
                 "Audio unavailable",
                 "Install the preview audio dependencies with: pip install -r requirements.txt"
             )
@@ -772,7 +862,7 @@ class RtGDisplayGUI:
                 except OSError:
                     pass
                 self.preview_audio_path = None
-            messagebox.showwarning(
+            self._showwarning(
                 "Audio unavailable",
                 f"Could not load the video's audio: {error}"
             )
@@ -787,7 +877,7 @@ class RtGDisplayGUI:
     def _open_video_preview(self, video_path: Path):
         """Open a separate window that replays the video as a low-resolution RtG pixel preview."""
         if cv2 is None:
-            messagebox.showerror(
+            self._showerror(
                 "Preview unavailable",
                 "OpenCV is required for the preview. Install it with: pip install opencv-python"
             )
@@ -798,7 +888,7 @@ class RtGDisplayGUI:
 
         capture = cv2.VideoCapture(str(video_path))
         if not capture.isOpened():
-            messagebox.showerror(
+            self._showerror(
                 "Preview failed",
                 f"Could not open video: {video_path.name}"
             )
@@ -940,13 +1030,13 @@ class RtGDisplayGUI:
     def _on_preview(self):
         """Handle preview button."""
         if not self.loaded_video_path:
-            messagebox.showwarning("No Video", "Please load a video first")
+            self._showwarning("No Video", "Please load a video first")
             return
 
         try:
             self._open_javascript_preview(self.loaded_video_path)
         except Exception as error:
-            messagebox.showwarning(
+            self._showwarning(
                 "JavaScript Preview unavailable",
                 f"{error}\n\nFalling back to the Python Preview.",
             )
@@ -955,16 +1045,16 @@ class RtGDisplayGUI:
     def _on_copy(self):
         """Handle copy button."""
         if self.generated_display_path is None or not self.generated_display_path.is_file():
-            messagebox.showwarning("No canvas", "Generate a canvas first")
+            self._showwarning("No canvas", "Generate a canvas first")
             return
         
         try:
             self.generated_json = self.generated_display_path.read_text(encoding="utf-8")
             self.root.clipboard_clear()
             self.root.clipboard_append(self.generated_json)
-            messagebox.showinfo("Copied", "display.json copied to clipboard!")
+            self._showinfo("Copied", "display.json copied to clipboard!")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to copy: {e}")
+            self._showerror("Error", f"Failed to copy: {e}")
 
     def _on_copy_base64(self):
         """Encode the latest display JSON, save it, and copy it to the clipboard."""
@@ -972,9 +1062,9 @@ class RtGDisplayGUI:
             encoded_json = encode_latest_display(self.generated_display_path)
             self.root.clipboard_clear()
             self.root.clipboard_append(encoded_json)
-            messagebox.showinfo("Copied", "Base64 saved to output/base64.json and copied to clipboard!")
+            self._showinfo("Copied", "Base64 saved to output/base64.json and copied to clipboard!")
         except Exception as error:
-            messagebox.showerror("Base64 failed", str(error))
+            self._showerror("Base64 failed", str(error))
     
     def _on_generate(self):
         """Handle generate button."""
@@ -986,16 +1076,16 @@ class RtGDisplayGUI:
                 output_paths = self.on_generate(self.get_settings())
                 self.generated_json = output_paths.get('json')
                 self.generated_display_path = Path(output_paths['display'])
-                messagebox.showinfo(
+                self._showinfo(
                     "Generated",
                     f"Generated physical canvas {width}×{height}\n"
                     f"Display exported to: {output_paths['display']}"
                 )
             except Exception as error:
-                messagebox.showerror("Generation failed", str(error))
+                self._showerror("Generation failed", str(error))
             return
 
-        messagebox.showinfo("Generate", f"Canvas configured: {width}×{height}")
+        self._showinfo("Generate", f"Canvas configured: {width}×{height}")
     
     def get_settings(self) -> dict:
         """Get current settings."""

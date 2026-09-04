@@ -217,6 +217,8 @@ class PixelTemplate:
         base_index: int,
         spacing: float = 1.0,
         color: Optional[Sequence[int]] = None,
+        position_x: Optional[float] = None,
+        position_y: Optional[float] = None,
     ) -> Tuple[Pixel, Dict[int, int]]:
         """
         Create a pixel instance by cloning the template with remapped indices.
@@ -270,6 +272,12 @@ class PixelTemplate:
 
             if color is not None and new_block.block_type == "Splitter_3":
                 new_block.properties["RGB"] = [int(channel) for channel in color]
+            elif (
+                color is not None
+                and new_block.block_type == "Part"
+                and new_block.properties.get("RGB") != [0, 0, 0]
+            ):
+                new_block.properties["RGB"] = [int(channel) for channel in color]
             
             # Remap all connections
             for old_conn in template_block.connections:
@@ -301,7 +309,11 @@ class PixelTemplate:
         base_block = target_build.blocks[base_index]
 
         # Create the spatial attachment on Base.
-        cframe = create_pixel_offset_cframe(x, y, spacing)
+        cframe = create_pixel_offset_cframe(
+            x if position_x is None else position_x,
+            y if position_y is None else position_y,
+            spacing,
+        )
 
         # The template root is a Part (LocalType 1), so the Base UUID connection
         # belongs on that root object.

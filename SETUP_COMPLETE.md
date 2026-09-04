@@ -90,7 +90,7 @@ from src.display.pixel import PixelTemplate
 from src.rtg.format import load_pixel_template_from_file
 
 # Cargar template
-template_build = load_pixel_template_from_file("assets/pixel/pixel.json")
+template_build = load_pixel_template_from_file("assets/builds/pixel.json")
 template = PixelTemplate(template_build)
 
 # Crear matriz

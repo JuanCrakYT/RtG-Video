@@ -63,7 +63,7 @@ def capture_gui_screenshot():
     print("   Height: 2-16 pixels (default 8)")
     
     print("\n🔘 Action Buttons:")
-    print("   [📋 Copy RtG] [👁️  Preview] [✨ Generate RtG]")
+    print("   [📋 Copy JSON] [👁️  Preview] [✨ Generate RtG]")
     
     print("\n✅ All elements verified and ready!")
     print("=" * 60 + "\n")

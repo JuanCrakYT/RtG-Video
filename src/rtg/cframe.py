@@ -183,7 +183,7 @@ class CFrame:
         return f"CFrame({x:.2f}, {y:.2f}, {z:.2f})"
 
 
-def create_pixel_offset_cframe(x: int, y: int, spacing: float = 1.0) -> CFrame:
+def create_pixel_offset_cframe(x: float, y: float, spacing: float = 1.0) -> CFrame:
     """
     Create a CFrame offset for placing a pixel at grid position (x, y).
     

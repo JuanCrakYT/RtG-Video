@@ -46,7 +46,7 @@ def print_summary():
 │  │  Output Size: 8 × 8 (64 pixels)                    │  │
 │  └─────────────────────────────────────────────────────┘  │
 │                                                             │
-│  [📋 Copy RtG]  [👁️  Preview]  [✨ Generate RtG]         │
+│  [📋 Copy JSON]  [👁️  Preview]  [✨ Generate RtG]         │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
 
@@ -67,7 +67,7 @@ def print_summary():
 
 3. ✅ Button Layout
    • Restructured action buttons row:
-     - LEFT: Copy RtG button (gray)
+     - LEFT: Copy JSON button (gray)
      - MIDDLE: Preview button (gray)
      - RIGHT: Generate RtG button (blue, primary action)
    • Proper spacing with frame separation

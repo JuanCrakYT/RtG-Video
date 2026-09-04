@@ -7,6 +7,7 @@ Handles a 2D grid of pixels with activation states and statistics.
 from typing import Iterable, List, Dict, Set, Tuple, Optional, Sequence
 from .pixel import Pixel, PixelTemplate
 from ..rtg.blocks import RtGBuild
+from ..config import DEFAULT_CANVAS_Y_OFFSET
 
 
 MIN_CANVAS_DIMENSION = 1
@@ -82,7 +83,14 @@ class DisplayMatrix:
                     if color == (0, 0, 0):
                         continue
                     pixel, _ = self.template.create_pixel_instance(
-                        x, y, self.build, self.base_index, spacing, color
+                        x,
+                        y,
+                        self.build,
+                        self.base_index,
+                        spacing,
+                        color,
+                        position_x=(x - (self.width - 1) / 2) * spacing,
+                        position_y=y * spacing + DEFAULT_CANVAS_Y_OFFSET,
                     )
                     layers.append(pixel)
                     total_blocks += pixel.get_block_count()

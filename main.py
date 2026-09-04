@@ -12,6 +12,7 @@ from pathlib import Path
 
 from src.config import DEFAULT_DISPLAY_WIDTH, DEFAULT_DISPLAY_HEIGHT, DEFAULT_PIXEL_SPACING
 from src.rtg.format import load_pixel_template_from_file
+from src.rtg.blocks import RtGBlock
 from src.rtg.uuid import reset_uuid_manager
 from src.display.pixel import PixelTemplate
 from src.display.matrix import MatrixBuilder
@@ -35,10 +36,10 @@ def load_real_pixel_template(template_path: str = None):
     """
     if template_path is None:
         # Try to find pixel.json in common locations
+        project_root = Path(__file__).resolve().parent
         candidates = [
-            Path("assets/pixel/pixel.json"),
-            Path("./assets/pixel/pixel.json"),
-            Path("../../assets/pixel/pixel.json"),
+            project_root / "assets" / "builds" / "pixel" / "pixel.json",
+            Path.cwd() / "assets" / "builds" / "pixel" / "pixel.json",
         ]
         
         for candidate in candidates:
@@ -119,6 +120,7 @@ def run_demo(
         .set_template(pixel_template)
         .build()
     )
+    _add_canvas_gyro(matrix)
     
     stats = matrix.get_stats()
     print(f"✓ Display created:")
@@ -153,14 +155,27 @@ def generate_canvas_build(settings):
         .set_dimensions(int(settings["width"]), int(settings["height"]))
         .set_spacing(DEFAULT_PIXEL_SPACING)
         .set_template(pixel_template)
+        .set_palette(settings.get("palette", [BLACK, WHITE, GRAY]))
         .build()
     )
+    _add_canvas_gyro(matrix)
     export_paths = RtGExporter.export_physical_canvas(
         matrix,
         settings.get("output_dir", "output"),
         compact=False,
     )
     return {**export_paths, "stats": matrix.get_stats()}
+
+
+def _add_canvas_gyro(matrix):
+    """Attach one activated Gyro to point 1 of the canvas Base block."""
+    matrix.build.add_block(
+        RtGBlock(
+            "Gyro",
+            connections=[["1", "1", 1]],
+            properties={"Activated": True, "RGB": [73, 26, 112]},
+        )
+    )
 
 
 def run_color_demo(output_dir: str = "output/color_demo"):
@@ -174,6 +189,7 @@ def run_color_demo(output_dir: str = "output/color_demo"):
         .set_template(pixel_template)
         .build()
     )
+    _add_canvas_gyro(matrix)
     pixel = matrix.get_pixel(0, 0)
     colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
     builder = SequenceBuilder()
@@ -209,6 +225,7 @@ def generate_video_build(settings):
         .set_palette(settings.get("palette", [BLACK, WHITE, GRAY]))
         .build()
     )
+    _add_canvas_gyro(matrix)
     sequence = video_to_sequence(
         settings["video"],
         matrix,

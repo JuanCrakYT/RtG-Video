@@ -41,7 +41,7 @@ if __name__ == "__main__":
     print("      - Height slider (2-16, default 8)")
     print("   4. Output Size display (e.g., '8 × 8 (64 pixels)')")
     print("   5. Three action buttons at the bottom:")
-    print("      - Copy RtG button (left)")
+    print("      - Copy JSON button (left)")
     print("      - Preview button (middle-right)")
     print("      - Generate RtG button (right, blue)")
     print()

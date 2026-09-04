@@ -119,7 +119,7 @@ def test_three_active_frames_extend_to_two_ors_and_resolve_uuid_to_splitter():
 
 
 def test_real_pixel_parent_references_are_one_based():
-    template_path = Path(__file__).parents[1] / "assets" / "pixel" / "pixel.json"
+    template_path = Path(__file__).parents[1] / "assets" / "builds" / "pixel" / "pixel.json"
     template = PixelTemplate(load_pixel_template_from_file(str(template_path)))
     matrix = MatrixBuilder().set_dimensions(2, 1).set_template(template).build()
 
@@ -149,7 +149,7 @@ def test_splitter_endpoint_point_is_derived_from_template_connection():
 
 
 def test_real_pixel_asset_generates_three_frame_reference_counts():
-    template_path = Path(__file__).parents[1] / "assets" / "pixel" / "pixel.json"
+    template_path = Path(__file__).parents[1] / "assets" / "builds" / "pixel" / "pixel.json"
     template = PixelTemplate(load_pixel_template_from_file(str(template_path)))
     matrix = MatrixBuilder().set_dimensions(1, 1).set_template(template).build()
     pixel = matrix.get_pixel(0, 0)

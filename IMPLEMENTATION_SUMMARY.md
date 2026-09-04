@@ -52,7 +52,7 @@ RtG Display is a Python application that generates **animated display matrices**
 ### 2. Display System (`src/display/`)
 
 #### Pixel Template (`pixel.py`)
-- **Real 22-block pixel** loaded from `assets/pixel/pixel.json`
+- **Real 22-block pixel** loaded from `assets/builds/pixel.json`
 - **Complex structure**: Servo motors, parts, connectors, buttons, splitter
 - **Cloning with index remapping**:
   1. Copy all blocks
@@ -191,7 +191,7 @@ from src.display.pixel import PixelTemplate
 from src.display.matrix import MatrixBuilder
 from src.rtg.format import load_pixel_template_from_file
 
-pixel_build = load_pixel_template_from_file("assets/pixel/pixel.json")
+pixel_build = load_pixel_template_from_file("assets/builds/pixel.json")
 template = PixelTemplate(pixel_build)
 
 matrix = (MatrixBuilder()

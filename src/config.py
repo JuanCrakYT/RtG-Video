@@ -6,6 +6,7 @@ Configuration and constants for RtG Display
 DEFAULT_DISPLAY_WIDTH = 8
 DEFAULT_DISPLAY_HEIGHT = 8
 DEFAULT_PIXEL_SPACING = 1.0  # Units in RtG space
+DEFAULT_CANVAS_Y_OFFSET = 0.75
 
 # CFrame defaults
 DEFAULT_CFRAME_IDENTITY = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]

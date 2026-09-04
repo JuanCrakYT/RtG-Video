@@ -14,7 +14,7 @@ from src.video import processing
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_PATH = ROOT / "assets" / "pixel" / "pixel.json"
+TEMPLATE_PATH = ROOT / "assets" / "builds" / "pixel" / "pixel.json"
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
@@ -40,6 +40,19 @@ def layer_colors(matrix):
     ]
 
 
+def layer_part_colors(matrix):
+    return [
+        tuple(
+            next(
+                block
+                for block in pixel.blocks
+                if block.block_type == "Part" and block.properties.get("RGB") != [0, 0, 0]
+            ).properties["RGB"]
+        )
+        for pixel in matrix.get_pixels(0, 0)
+    ]
+
+
 def test_black_does_not_create_a_physical_layer():
     matrix = build_overlay_matrix([BLACK])
     assert matrix.get_pixels(0, 0) == []
@@ -51,6 +64,7 @@ def test_visible_colors_create_deduplicated_overlays():
     layers = matrix.get_pixels(0, 0)
 
     assert layer_colors(matrix) == [RED, GREEN, BLUE]
+    assert layer_part_colors(matrix) == [RED, GREEN, BLUE]
     assert len({pixel.uuid for pixel in layers}) == 3
     assert len(matrix.build.blocks[0].properties["EphemeralAttachments"]) == 3
 
@@ -59,7 +73,7 @@ def test_visible_colors_create_deduplicated_overlays():
         for pixel in layers
     ]
     assert cframes == [cframes[0], cframes[0], cframes[0]]
-    assert cframes[0] == (0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, -1e16, 0.0, 0.0, 1.0)
+    assert cframes[0] == (0.0, 0.75, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, -1e16, 0.0, 0.0, 1.0)
 
 
 def test_overlay_layers_switch_without_accumulating_between_frames():

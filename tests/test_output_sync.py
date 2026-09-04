@@ -13,7 +13,7 @@ from main import generate_canvas_build
 
 
 ROOT = Path(__file__).resolve().parents[1]
-TEMPLATE_PATH = ROOT / "assets" / "pixel" / "pixel.json"
+TEMPLATE_PATH = ROOT / "assets" / "builds" / "pixel" / "pixel.json"
 
 
 def generate_physical_canvas(width: int, height: int, output_dir: str):
@@ -70,3 +70,24 @@ def test_generate_callback_returns_exact_display_json_for_copy():
 
         assert result["json"] == generated_json
         assert result["display"].endswith("display.json")
+
+
+def test_generate_callback_creates_one_layer_per_visible_palette_color():
+    with TemporaryDirectory() as temporary_directory:
+        result = generate_canvas_build({
+            "width": 2,
+            "height": 3,
+            "output_dir": temporary_directory,
+            "palette": [
+                [0, 0, 0],
+                [255, 0, 0],
+                [0, 255, 0],
+                [0, 0, 255],
+            ],
+        })
+
+        display = json.loads(Path(result["display"]).read_text(encoding="utf-8"))
+        assert result["stats"]["total_pixels"] == 2 * 3 * 3
+        assert sum(block[0] == "Splitter_3" for block in display) == 2 * 3 * 3
+        gyro_blocks = [block for block in display if block[0] == "Gyro"]
+        assert gyro_blocks == [["Gyro", [["1", "1", 1]], {"Activated": True, "RGB": [73, 26, 112]}]]
