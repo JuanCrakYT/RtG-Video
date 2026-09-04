@@ -25,7 +25,7 @@
 </head>
 
 <body>
-    <video id="source" controls playsinline preload="auto"></video>
+    <video id="source" controls preload="auto"></video>
     <p id="status" role="status">Loading preview...</p>
     <script type="module">
         import { PreviewController } from "./preview.js";
@@ -33,6 +33,7 @@
         const query = new URLSearchParams(window.location.search);
         const source = document.querySelector("#source");
         const status = document.querySelector("#status");
+        source.playsInline = true;
         const token = query.get("video")?.split("/").pop();
         let controller = null;
 

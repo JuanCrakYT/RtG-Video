@@ -8,7 +8,7 @@
 </head>
 
 <body>
-    <video id="source" muted playsinline></video>
+    <video id="source" muted></video>
     <canvas id="preview" width="420" height="420"></canvas>
     <pre id="results">Loading...</pre>
     <script type="module">
@@ -26,6 +26,7 @@
         const MAX_FRAMES = Number(query.get("frames") || 180);
         const palette = [[0, 0, 0], [255, 255, 255], [128, 128, 128]];
         const video = document.querySelector("#source");
+        video.playsInline = true;
         const canvas = document.querySelector("#preview");
         const context = canvas.getContext("2d", { willReadFrequently: true });
         const sourceCanvas = document.createElement("canvas");
