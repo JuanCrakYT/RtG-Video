@@ -11,6 +11,7 @@ from src.rtg.uuid import reset_uuid_manager
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE_PATH = ROOT / "assets" / "builds" / "pixel" / "pixel.json"
+REMOTE_TEMPLATE_PATH = ROOT / "assets" / "builds" / "pixel" / "remote-pixel.json"
 
 
 def build_canvas(width: int, height: int):
@@ -127,3 +128,23 @@ def test_pixel_base_attachment_is_on_template_root():
     first_block = pixel.blocks[0]
     assert first_block.block_type == "Connector"
     assert first_block.connections == [["5", "2", 19]]
+
+
+def test_remote_pixel_asset_preserves_remote_button_topology():
+    template = load_pixel_template_from_file(str(REMOTE_TEMPLATE_PATH))
+    block_types = [block.block_type for block in template.blocks]
+
+    assert block_types.count("RemoteButton") == 1
+    assert block_types.count("Splitter_3") == 1
+
+    remote_button_index = block_types.index("RemoteButton") + 1
+    splitter = template.blocks[block_types.index("Splitter_3")]
+    remote_button = template.blocks[block_types.index("RemoteButton")]
+
+    assert ["3", "2", remote_button_index] in splitter.connections
+    assert ["3", "4", 1] in remote_button.connections
+    assert all(
+        1 <= connection[2] <= len(template.blocks)
+        for block in template.blocks
+        for connection in block.connections
+    )

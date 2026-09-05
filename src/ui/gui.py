@@ -114,7 +114,10 @@ class RtGDisplayGUI:
         self.preview_process = None
         self.preview_token = None
         self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
-        self.pixel_base_object_count = self._load_pixel_base_object_count()
+        self.asset_templates = self._discover_asset_templates()
+        self.selected_asset_type = next(iter(self.asset_templates), "")
+        self.pixel_base_object_count = self._load_asset_object_count(self.selected_asset_type)
+        self.asset_combo = None
         self.palette_combo = None
         self._sound_cache = {}
         self._slider_sound_suppressed = False
@@ -135,9 +138,25 @@ class RtGDisplayGUI:
         return Path(__file__).resolve().parents[2] / "assets" / "sfx" / name
 
     @staticmethod
-    def _load_pixel_base_object_count() -> int:
-        """Return the number of objects in the pixel template."""
-        template_path = Path(__file__).resolve().parents[2] / "assets" / "builds" / "pixel" / "pixel.json"
+    def _discover_asset_templates() -> dict[str, Path]:
+        """Return valid build JSON assets keyed by their display name."""
+        asset_dir = Path(__file__).resolve().parents[2] / "assets" / "builds" / "pixel"
+        templates = {}
+        for template_path in sorted(asset_dir.glob("*.json")):
+            try:
+                with template_path.open(encoding="utf-8") as template_file:
+                    template_data = json.load(template_file)
+                if isinstance(template_data, list) and template_data:
+                    templates[template_path.stem] = template_path
+            except (OSError, TypeError, ValueError):
+                continue
+        return templates
+
+    def _load_asset_object_count(self, asset_type: str) -> int:
+        """Return the number of objects in the selected asset template."""
+        template_path = self.asset_templates.get(asset_type)
+        if template_path is None:
+            return 0
         try:
             with template_path.open(encoding="utf-8") as template_file:
                 return len(json.load(template_file))
@@ -467,6 +486,28 @@ class RtGDisplayGUI:
             fg=self.text_primary
         )
         title.pack(anchor='w', pady=(0, 20))
+
+        asset_frame = tk.Frame(content, bg=self.bg_secondary)
+        asset_frame.pack(fill=tk.X, pady=(0, 10))
+
+        tk.Label(
+            asset_frame,
+            text="Asset Type",
+            font=('Segoe UI', 10),
+            bg=self.bg_secondary,
+            fg=self.text_primary,
+        ).pack(side=tk.LEFT)
+
+        self.asset_combo = ttk.Combobox(
+            asset_frame,
+            state="readonly",
+            values=list(self.asset_templates),
+            width=28,
+        )
+        if self.selected_asset_type:
+            self.asset_combo.set(self.selected_asset_type)
+        self.asset_combo.pack(side=tk.RIGHT, fill=tk.X, expand=True, padx=(20, 0))
+        self.asset_combo.bind("<<ComboboxSelected>>", self._on_asset_type_changed)
         
         # Width slider
         self._build_slider(
@@ -908,6 +949,16 @@ class RtGDisplayGUI:
             width = getattr(self, 'width_value_slider').get()
             height = getattr(self, 'height_value_slider').get()
             self.on_settings_changed({'width': width, 'height': height})
+
+    def _on_asset_type_changed(self, _event=None):
+        """Apply the selected asset template to generation settings."""
+        if self.asset_combo is None:
+            return
+        self.selected_asset_type = self.asset_combo.get()
+        self.pixel_base_object_count = self._load_asset_object_count(self.selected_asset_type)
+        self._update_output_size()
+        if self.on_settings_changed:
+            self.on_settings_changed({'pixel_template': str(self.asset_templates[self.selected_asset_type])})
     
     def _on_height_changed(self, value: int):
         """Handle height slider change."""
@@ -1317,7 +1368,8 @@ class RtGDisplayGUI:
             'video': str(self.loaded_video_path) if self.loaded_video_path else None,
             'width': getattr(self, 'width_value_slider').get(),
             'height': getattr(self, 'height_value_slider').get(),
-            'palette': [color.copy() for color in self.palette_colors]
+            'palette': [color.copy() for color in self.palette_colors],
+            'pixel_template': str(self.asset_templates[self.selected_asset_type]),
         }
     
     def run(self):
