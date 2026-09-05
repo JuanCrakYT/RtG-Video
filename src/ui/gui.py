@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, colorchooser
 from pathlib import Path
 from typing import Optional, Callable
+import json
 import os
 import shutil
 import subprocess
@@ -113,6 +114,7 @@ class RtGDisplayGUI:
         self.preview_process = None
         self.preview_token = None
         self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
+        self.pixel_base_object_count = self._load_pixel_base_object_count()
         self.palette_combo = None
         self._sound_cache = {}
         self._slider_sound_suppressed = False
@@ -131,6 +133,16 @@ class RtGDisplayGUI:
     def _sound_path(self, name: str) -> Path:
         """Return the path of a UI sound effect."""
         return Path(__file__).resolve().parents[2] / "assets" / "sfx" / name
+
+    @staticmethod
+    def _load_pixel_base_object_count() -> int:
+        """Return the number of objects in the pixel template."""
+        template_path = Path(__file__).resolve().parents[2] / "assets" / "builds" / "pixel" / "pixel.json"
+        try:
+            with template_path.open(encoding="utf-8") as template_file:
+                return len(json.load(template_file))
+        except (OSError, TypeError, ValueError):
+            return 0
 
     def _play_sound(self, name: str) -> None:
         """Play a short UI sound without making audio a GUI requirement."""
@@ -495,6 +507,15 @@ class RtGDisplayGUI:
             fg=self.accent_color
         )
         self.output_size_label.pack(side=tk.LEFT, padx=(10, 0))
+
+        self.total_objects_label = tk.Label(
+            output_frame,
+            text="0 total objects",
+            font=('Segoe UI', 9, 'bold'),
+            bg=self.bg_secondary,
+            fg=self.accent_color
+        )
+        self.total_objects_label.pack(side=tk.RIGHT)
         self._update_output_size()
     
     def _build_slider(self, parent, label: str, min_val: int, max_val: int, 
@@ -906,12 +927,14 @@ class RtGDisplayGUI:
         )
         total = width * height * non_black_colors
         black_pixels = width * height
+        total_objects = total * self.pixel_base_object_count + 2
         self.output_size_label.config(
             text=(
                 f"{width} × {height} × {non_black_colors} "
                 f"({total} pixels, just {black_pixels} black pixels)"
             )
         )
+        self.total_objects_label.config(text=f"{total_objects} total objects")
     
     def _close_preview(self):
         """Stop preview playback and close the preview window."""
