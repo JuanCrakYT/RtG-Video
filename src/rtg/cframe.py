@@ -1,5 +1,5 @@
 """
-CFrame utilities for RtG Display.
+CFrame utilities for RtG Video.
 
 Handles creation, manipulation, and validation of CFrame transformations.
 CFrame is a 12-element array: [X, Y, Z, R1, R2, R3, R4, R5, R6, R7, R8, R9]

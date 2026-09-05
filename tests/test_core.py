@@ -1,5 +1,5 @@
 """
-Tests for RtG Display core functionality.
+Tests for RtG Video core functionality.
 """
 
 import sys
@@ -257,7 +257,7 @@ def test_format_validation():
 def run_all_tests():
     """Run all tests."""
     print("=" * 50)
-    print("[TEST] Running RtG Display Tests")
+    print("[TEST] Running RtG Video Tests")
     print("=" * 50)
     
     tests = [

@@ -194,7 +194,7 @@ The exact behavior of each entry point depends on the current project configurat
 
 ## GUI
 
-RtG Video includes a graphical interface called **RtG Display**.
+RtG Video includes a graphical interface called **RtG Video**.
 
 The GUI currently provides configuration for:
 
@@ -220,7 +220,7 @@ Source Video
 Pixel Preview
 ```
 
-This makes it possible to visually inspect how a video will look on a low-resolution RtG display before generating the final output.
+This makes it possible to visually inspect how a video will look on a low-resolution RtG Video before generating the final output.
 
 ## Video Processing
 

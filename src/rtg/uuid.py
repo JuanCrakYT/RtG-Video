@@ -1,5 +1,5 @@
 """
-UUID management for RtG Display.
+UUID management for RtG Video.
 
 Handles generation, validation, and tracking of UUIDs for RtG builds.
 UUIDs are used to reference EphemeralAttachments and spatial transformations.
@@ -12,7 +12,7 @@ from typing import Dict, List, Set, Tuple, Optional
 
 class UUIDManager:
     """
-    Manages UUID generation and tracking for RtG display system.
+    Manages UUID generation and tracking for RtG Video system.
     
     RtG requires UUIDs in format: {xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}
     """

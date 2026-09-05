@@ -6,7 +6,7 @@ Visual summary of GUI fixes and improvements.
 def print_summary():
     summary = """
 ╔════════════════════════════════════════════════════════════════╗
-║           RtG DISPLAY - GUI FIXES IMPLEMENTED ✅               ║
+║           RtG Video - GUI FIXES IMPLEMENTED ✅               ║
 ╚════════════════════════════════════════════════════════════════╝
 
 📋 ISSUES FIXED:
@@ -26,7 +26,7 @@ def print_summary():
 ┌─────────────────────────────────────────────────────────────┐
 │                    ✨ NEW GUI LAYOUT ✨                     │
 │                                                             │
-│        RtG Display                                          │
+│        RtG Video                                          │
 │     Animated Display Generator for Road To Gramby's         │
 │                                                             │
 │  📁 Video Source                                           │

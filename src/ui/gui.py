@@ -1,5 +1,5 @@
 """
-Modern GUI for RtG Display.
+Modern GUI for RtG Video.
 
 Professional and minimalist interface for video loading and canvas configuration.
 """
@@ -50,7 +50,7 @@ def _set_windows_app_user_model_id() -> None:
 def _show_startup_window(root: tk.Tk) -> tk.Toplevel:
     """Show a short-lived startup window so Windows registers the app icon."""
     startup_window = tk.Toplevel(root)
-    startup_window.title("RtG Display")
+    startup_window.title("RtG Video")
     startup_window.geometry("240x90")
     startup_window.resizable(False, False)
     RtGDisplayGUI._set_window_icon(startup_window)
@@ -72,7 +72,7 @@ def _show_startup_window(root: tk.Tk) -> tk.Toplevel:
 
 class RtGDisplayGUI:
     """
-    Main GUI window for RtG Display application.
+    Main GUI window for RtG Video application.
     """
     
     def __init__(self, root: tk.Tk):
@@ -83,7 +83,7 @@ class RtGDisplayGUI:
             root: The tkinter root window
         """
         self.root = root
-        self.root.title("RtG Display")
+        self.root.title("RtG Video")
         self._set_window_icon(self.root)
         self.root.geometry("760x800")
         self.root.minsize(600, 800)
@@ -345,7 +345,7 @@ class RtGDisplayGUI:
         # Title
         title_label = ttk.Label(
             main_frame,
-            text="RtG Display",
+            text="RtG Video",
             font=('Segoe UI', 20, 'bold'),
             foreground=self.text_primary
         )
@@ -1304,7 +1304,7 @@ class RtGDisplayGUI:
 
 def launch_gui(on_video_loaded=None, on_settings_changed=None, on_generate=None):
     """
-    Launch the RtG Display GUI.
+    Launch the RtG Video GUI.
     
     Args:
         on_video_loaded: Callback function when video is loaded

@@ -1,5 +1,5 @@
 """
-Reference system for RtG Display.
+Reference system for RtG Video.
 
 Handles connections between blocks using the documented RtG reference format.
 References can be made via direct indices or via UUID + EphemeralAttachment.

@@ -1,4 +1,4 @@
-# RtG Display - Quick Start Guide
+# RtG Video - Quick Start Guide
 
 ## 🚀 Getting Started
 
@@ -51,7 +51,7 @@ python main.py --demo --width 4 --height 4 --output my_output
 
 ### Actions
 - **👁️ Preview**: See animation preview
-- **✨ Generate Display**: Create the RtG display
+- **✨ Generate Display**: Create the RtG Video
 
 ## 📋 System Requirements
 
@@ -243,4 +243,4 @@ Statistics and metadata
 
 ## 🎉 Ready to Use!
 
-The RtG Display application is fully functional with a professional GUI. Enjoy creating animated displays!
+The RtG Video application is fully functional with a professional GUI. Enjoy creating animated displays!

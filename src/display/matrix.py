@@ -1,5 +1,5 @@
 """
-Display matrix management for RtG Display.
+Display matrix management for RtG Video.
 
 Handles a 2D grid of pixels with activation states and statistics.
 """

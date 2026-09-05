@@ -1,5 +1,5 @@
 """
-RtG Display - Main entry point
+RtG Video - Main entry point
 
 Generates pixel matrices for animated displays compatible with Road To Gramby's (RtG).
 Includes both GUI and CLI modes.
@@ -83,7 +83,7 @@ def run_demo(
     use_fallback: bool = False
 ):
     """
-    Run a demo of the RtG Display system.
+    Run a demo of the RtG Video system.
     
     Args:
         width: Display width in pixels
@@ -92,7 +92,7 @@ def run_demo(
         use_fallback: Use simple template if real one not found
     """
     print(f"\n{'='*60}")
-    print("RtG Display - Demo")
+    print("RtG Video - Demo")
     print(f"{'='*60}\n")
     
     # Reset UUID manager for fresh demo
@@ -246,7 +246,7 @@ def generate_video_build(settings):
 def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="RtG Display - Animated display generator"
+        description="RtG Video - Animated display generator"
     )
     
     parser.add_argument(

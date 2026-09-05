@@ -6,13 +6,13 @@ Summary of GUI Implementation
 def print_summary():
     summary = """
 ╔════════════════════════════════════════════════════════════════╗
-║                  RtG DISPLAY - GUI COMPLETE                   ║
+║                  RtG Video - GUI COMPLETE                   ║
 ╚════════════════════════════════════════════════════════════════╝
 
 🎨 PROFESSIONAL MINIMALIST INTERFACE CREATED
 
 ┌─────────────────────────────────────────────────────────────┐
-│                      RtG Display                           │
+│                      RtG Video                           │
 │      Animated Display Generator for Road To Gramby's       │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
@@ -211,7 +211,7 @@ def print_summary():
 
   $ python main.py
 
-Enjoy your new professional RtG Display interface! ✨
+Enjoy your new professional RtG Video interface! ✨
 
 ────────────────────────────────────────────────────────────────
 """

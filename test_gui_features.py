@@ -30,7 +30,7 @@ def create_test_gui():
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("RtG Display GUI Test - All Features Check")
+    print("RtG Video GUI Test - All Features Check")
     print("=" * 60)
     print()
     print("✅ Features to verify:")

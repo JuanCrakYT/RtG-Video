@@ -11,7 +11,7 @@ function previewUrl() {
 }
 
 function createPreviewWindow() {
-    const icon = path.join(__dirname, "../../../assets/logo/favicon.ico");
+    const icon = path.join(__dirname, "../../../assets/logo/favicon-preview.ico");
     const window = new BrowserWindow({
         title: "RtG Video Preview",
         width: 560,

@@ -1,5 +1,5 @@
 """
-Animation frame representation for RtG Display.
+Animation frame representation for RtG Video.
 
 A frame represents a single snapshot in an animation with a duration
 and a set of active pixels.

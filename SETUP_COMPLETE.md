@@ -1,8 +1,8 @@
-# RtG Display - Proyecto Completado
+# RtG Video - Proyecto Completado
 
 ## ✅ Estado: LISTO PARA USAR
 
-La carpeta se ha completamente reorganizado y el proyecto RtG Display está funcional en la ubicación correcta:
+La carpeta se ha completamente reorganizado y el proyecto RtG Video está funcional en la ubicación correcta:
 ```
 c:\Users\User\Desktop\Created programs\Mine\RtG Converter (Video)\RtG Video\
 ```

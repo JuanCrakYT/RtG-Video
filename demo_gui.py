@@ -12,7 +12,7 @@ def demo_gui():
     root = tk.Tk()
     
     print("\n" + "="*60)
-    print("RtG Display - GUI Demo")
+    print("RtG Video - GUI Demo")
     print("="*60)
     print("\nStarting GUI window...")
     print("\nGUI Features Demonstrated:")

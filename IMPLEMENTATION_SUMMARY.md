@@ -1,12 +1,12 @@
-# RtG Display - Project Summary
+# RtG Video - Project Summary
 
 ## ✅ Completed Implementation
 
-The **RtG Display** project is now fully operational with all core systems implemented, tested, and validated.
+The **RtG Video** project is now fully operational with all core systems implemented, tested, and validated.
 
 ## Project Overview
 
-RtG Display is a Python application that generates **animated display matrices** for Road To Gramby's (Roblox). Instead of creating individual builds per frame, it creates a single reusable physical display that can be controlled by sending activation signals to specific pixels over time.
+RtG Video is a Python application that generates **animated display matrices** for Road To Gramby's (Roblox). Instead of creating individual builds per frame, it creates a single reusable physical display that can be controlled by sending activation signals to specific pixels over time.
 
 ## Architecture & Components
 
@@ -118,7 +118,7 @@ Generate UUIDs + CFrame offsets
     ↓
 Connect to Base
     ↓
-RtG Display JSON (85 blocks)
+RtG Video JSON (85 blocks)
 
 Animation Frames:
     ↓
@@ -155,7 +155,7 @@ Control JSON (animation sequence)
 ## File Structure
 
 ```
-RtG Display/
+RtG Video/
 ├── src/
 │   ├── rtg/
 │   │   ├── uuid.py          # UUID generation/tracking
@@ -226,7 +226,7 @@ CombinedExporter.export_complete(matrix, animation, "output", "demo")
 All 8 test categories passing:
 
 ```
-[TEST] Running RtG Display Tests
+[TEST] Running RtG Video Tests
 ==================================================
 Testing UUID generation...          ✓ Passed
 Testing CFrame...                   ✓ Passed
@@ -304,7 +304,7 @@ Testing format validation...        ✓ Passed
 
 ## Conclusion
 
-RtG Display successfully demonstrates:
+RtG Video successfully demonstrates:
 - ✅ Understanding of RtG save format
 - ✅ Correct UUID and CFrame usage
 - ✅ Proper reference management

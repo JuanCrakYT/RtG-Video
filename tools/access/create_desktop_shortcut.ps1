@@ -5,7 +5,7 @@ $pythonwPath = Join-Path $projectRoot '.venv\Scripts\pythonw.exe'
 $mainPath = Join-Path $projectRoot 'main.py'
 $iconPath = Join-Path $projectRoot 'assets\logo\favicon.ico'
 $desktopPath = [Environment]::GetFolderPath('Desktop')
-$shortcutPath = Join-Path $desktopPath 'RtG Display.lnk'
+$shortcutPath = Join-Path $desktopPath 'RtG Video.lnk'
 
 if (-not (Test-Path -LiteralPath $pythonwPath)) {
     throw "Could not find the virtual environment Python launcher: $pythonwPath"
@@ -20,7 +20,7 @@ $shortcut = $shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath = $pythonwPath
 $shortcut.Arguments = '"' + $mainPath + '"'
 $shortcut.WorkingDirectory = $projectRoot
-$shortcut.Description = 'Launch RtG Display'
+$shortcut.Description = 'Launch RtG Video'
 if (Test-Path -LiteralPath $iconPath) {
     $shortcut.IconLocation = $iconPath
 }

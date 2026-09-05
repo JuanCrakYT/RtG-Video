@@ -1,8 +1,8 @@
-# RtG Display - GUI Implementation Complete ✨
+# RtG Video - GUI Implementation Complete ✨
 
 ## 🎨 What Was Added
 
-A professional, minimalist GUI has been implemented for the RtG Display application with three main components:
+A professional, minimalist GUI has been implemented for the RtG Video application with three main components:
 
 ### 1. **Video Loading Interface**
 - Professional file browser dialog
@@ -18,7 +18,7 @@ A professional, minimalist GUI has been implemented for the RtG Display applicat
 
 ### 3. **Action Buttons**
 - **👁️ Preview**: Show animation preview
-- **✨ Generate Display**: Create RtG display from video
+- **✨ Generate Display**: Create RtG Video from video
 
 ## 🎯 Design Features
 
@@ -155,7 +155,7 @@ self._build_slider(
 
 ## 🔌 Integration with Backend
 
-The GUI is designed to integrate seamlessly with the RtG Display backend:
+The GUI is designed to integrate seamlessly with the RtG Video backend:
 
 1. **Video Loading**: Pass file path to video processor
 2. **Canvas Settings**: Adjust display matrix dimensions
@@ -231,7 +231,7 @@ No additional dependencies needed beyond existing requirements.
 
 ### Main Window
 - **Size**: 600×400px (fixed)
-- **Title**: "RtG Display"
+- **Title**: "RtG Video"
 - **Style**: Modern, professional
 
 ### Header Section

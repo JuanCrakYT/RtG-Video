@@ -12,7 +12,7 @@ def capture_gui_screenshot():
     """Capture the GUI window as an image."""
     # Create root window
     root = tk.Tk()
-    root.title("RtG Display")
+    root.title("RtG Video")
     root.geometry("620x500")
     root.resizable(False, False)
     

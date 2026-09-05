@@ -1,5 +1,5 @@
 """
-Animation sequence management for RtG Display.
+Animation sequence management for RtG Video.
 
 Manages ordered sequences of animation frames with statistics.
 """

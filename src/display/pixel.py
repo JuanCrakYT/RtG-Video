@@ -1,5 +1,5 @@
 """
-Pixel template and instantiation for RtG Display.
+Pixel template and instantiation for RtG Video.
 
 Handles cloning complex pixel templates with index remapping.
 """

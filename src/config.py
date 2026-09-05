@@ -1,5 +1,5 @@
 """
-Configuration and constants for RtG Display
+Configuration and constants for RtG Video
 """
 
 # Display defaults

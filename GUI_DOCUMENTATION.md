@@ -1,8 +1,8 @@
-# RtG Display - GUI Documentation
+# RtG Video - GUI Documentation
 
 ## 🎨 User Interface Overview
 
-The RtG Display application features a professional, minimalist GUI built with tkinter.
+The RtG Video application features a professional, minimalist GUI built with tkinter.
 
 ### Design Philosophy
 - **Modern Design**: Segoe UI font, Material Design color scheme
@@ -22,7 +22,7 @@ The RtG Display application features a professional, minimalist GUI built with t
 
 ### Header Section
 ```
-RtG Display
+RtG Video
 Animated Display Generator for Road To Gramby's
 ```
 - Large title with professional subtitle
