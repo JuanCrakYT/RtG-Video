@@ -28,6 +28,14 @@ class PreviewServer:
 
             def do_GET(self):
                 path = unquote(urlparse(self.path).path)
+                if path == "/asset/notification.mp3":
+                    asset = owner.root.parents[2] / "assets" / "sfx" / "notification.mp3"
+                    if not asset.is_file():
+                        self.send_error(404)
+                        return
+                    self.path = "/notification.mp3"
+                    self._send_video(asset)
+                    return
                 if path.startswith("/video/"):
                     token = path.removeprefix("/video/")
                     video = owner.videos.get(token)

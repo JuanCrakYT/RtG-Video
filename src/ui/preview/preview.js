@@ -142,8 +142,10 @@ export class PreviewController {
         this.previewCanvas = null;
         this.previewContext = null;
         this.previewCounter = null;
+        this.toggleSound = null;
         this.frameNumber = 0;
         this.totalFrames = null;
+        this.lastMediaTime = null;
         this.isPlaying = false;
         this.callbackMode = null;
         this.handleVideoError = () => {
@@ -189,6 +191,9 @@ export class PreviewController {
         const controls = document.createElement("div");
         controls.style.textAlign = "center";
         controls.style.margin = "12px";
+        const AudioConstructor = this.previewWindow.Audio || this.windowTarget.Audio;
+        this.toggleSound = typeof AudioConstructor === "function"
+            ? new AudioConstructor("/asset/notification.mp3") : null;
         const toggle = document.createElement("button");
         toggle.textContent = "Pause";
         toggle.onclick = () => this.togglePause(toggle);
@@ -198,8 +203,12 @@ export class PreviewController {
         close.onclick = () => this.close();
         controls.appendChild(close);
         document.body.appendChild(controls);
-        this.totalFrames = Number.isFinite(this.video.duration) && this.video.duration > 0 && this.video.dataset.fps
-            ? Math.round(this.video.duration * Number(this.video.dataset.fps)) : Number(this.frameCount) || null;
+        const suppliedFrameCount = Number(this.frameCount);
+        const videoFrameRate = Number(this.video.dataset.fps);
+        this.totalFrames = Number.isFinite(suppliedFrameCount) && suppliedFrameCount > 0
+            ? Math.trunc(suppliedFrameCount)
+            : Number.isFinite(this.video.duration) && this.video.duration > 0 && Number.isFinite(videoFrameRate) && videoFrameRate > 0
+                ? Math.round(this.video.duration * videoFrameRate) : null;
         this.onData?.({
             Width: this.width,
             Height: this.height,
@@ -219,6 +228,10 @@ export class PreviewController {
 
     togglePause(toggleButton) {
         if (!this.previewWindow || (this.ownsPreviewWindow && this.previewWindow.closed)) return;
+        if (this.toggleSound) {
+            this.toggleSound.currentTime = 0;
+            this.toggleSound.play().catch(() => { });
+        }
         this.isPlaying = !this.isPlaying;
         if (this.isPlaying) {
             this.video.play().catch((error) => {
@@ -246,8 +259,16 @@ export class PreviewController {
         if (!this.previewWindow || (this.ownsPreviewWindow && this.previewWindow.closed)) return this.close();
         if (!this.previewCanvas || !this.isPlaying) return;
         this.animationFrame = null;
-        if (metadata?.presentedFrames !== undefined) this.frameNumber = metadata.presentedFrames;
-        else if (!this.video.paused) this.frameNumber += 1;
+        const mediaTime = Number.isFinite(metadata?.mediaTime) ? metadata.mediaTime : this.video.currentTime;
+        const frameRate = Number(this.video.dataset.fps);
+        if (Number.isFinite(mediaTime) && mediaTime >= 0 && Number.isFinite(frameRate) && frameRate > 0) {
+            this.frameNumber = this.totalFrames
+                ? Math.floor(mediaTime * frameRate) % this.totalFrames
+                : Math.floor(mediaTime * frameRate);
+        } else if (!this.video.paused) {
+            this.frameNumber = this.totalFrames ? (this.frameNumber + 1) % this.totalFrames : this.frameNumber + 1;
+        }
+        this.lastMediaTime = mediaTime;
         const processed = processVideoFrame(this.video, this.sourceCanvas, this.sourceContext, this.width, this.height, this.palette);
         this.previewContext.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
         renderQuantizedGrid(this.previewContext, processed.quantized, this.width, this.height);
@@ -270,8 +291,10 @@ export class PreviewController {
         this.previewCanvas = null;
         this.previewContext = null;
         this.previewCounter = null;
+        this.toggleSound = null;
         this.sourceCanvas = null;
         this.sourceContext = null;
+        this.lastMediaTime = null;
         this.isPlaying = false;
         if (notify) this.onClose?.();
     }
