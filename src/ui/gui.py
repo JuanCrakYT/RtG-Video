@@ -36,6 +36,40 @@ except ImportError:  # pragma: no cover - support older MoviePy releases
         VideoFileClip = None
 
 
+def _set_windows_app_user_model_id() -> None:
+    """Give Windows a stable application identity instead of Python's identity."""
+    if os.name != "nt":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("RtG.Display")
+    except (AttributeError, OSError):
+        pass
+
+
+def _show_startup_window(root: tk.Tk) -> tk.Toplevel:
+    """Show a short-lived startup window so Windows registers the app icon."""
+    startup_window = tk.Toplevel(root)
+    startup_window.title("RtG Display")
+    startup_window.geometry("240x90")
+    startup_window.resizable(False, False)
+    RtGDisplayGUI._set_window_icon(startup_window)
+    tk.Label(startup_window, text="loading...", font=("Segoe UI", 10)).pack(pady=(16, 6))
+    progressbar = ttk.Progressbar(startup_window, mode="indeterminate", length=180)
+    progressbar.pack()
+    progressbar.start(10)
+
+    def close_startup_window():
+        progressbar.stop()
+        startup_window.destroy()
+
+    startup_window.protocol("WM_DELETE_WINDOW", close_startup_window)
+    startup_window.update_idletasks()
+    startup_window.update()
+    startup_window.after(150, close_startup_window)
+    return startup_window
+
+
 class RtGDisplayGUI:
     """
     Main GUI window for RtG Display application.
@@ -80,9 +114,12 @@ class RtGDisplayGUI:
         self.preview_token = None
         self.palette_colors = [list(color) for color in DEFAULT_PALETTE]
         self.palette_combo = None
+        self._sound_cache = {}
+        self._slider_sound_suppressed = False
         
         # Build GUI
         self._build_gui()
+        self.root.bind_all("<ButtonPress-1>", self._on_mouse_press, add="+")
         self._center_window(self.root)
         self.root.protocol("WM_DELETE_WINDOW", self._close_application)
 
@@ -91,22 +128,59 @@ class RtGDisplayGUI:
         """Return an asset path independent of the current working directory."""
         return Path(__file__).resolve().parents[2] / "assets" / "logo" / name
 
+    def _sound_path(self, name: str) -> Path:
+        """Return the path of a UI sound effect."""
+        return Path(__file__).resolve().parents[2] / "assets" / "sfx" / name
+
+    def _play_sound(self, name: str) -> None:
+        """Play a short UI sound without making audio a GUI requirement."""
+        if pygame is None:
+            return
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            sound = self._sound_cache.get(name)
+            if sound is None:
+                sound = pygame.mixer.Sound(str(self._sound_path(name)))
+                self._sound_cache[name] = sound
+            sound.play()
+        except (OSError, pygame.error):
+            return
+
+    def _on_mouse_press(self, event):
+        """Play the tap sound for buttons, including buttons in child dialogs."""
+        widget = event.widget
+        if isinstance(widget, str):
+            try:
+                widget = self.root.nametowidget(widget)
+            except (KeyError, tk.TclError):
+                return
+        if widget.winfo_class() in {"Button", "TButton"}:
+            if widget.cget("text") in {
+                "Copy Base64", "+ Add", "Remove", "Custom colors..."
+            }:
+                return
+            self._play_sound("tap.mp3")
+
     @classmethod
     def _set_window_icon(cls, window: tk.Misc) -> None:
         """Apply the project logo to a Tk window when the asset is available."""
-        favicon_path = cls._asset_path("favicon.ico")
+        favicon_path = Path(__file__).resolve().parents[2] / "assets/logo/favicon.ico"
         logo_path = cls._asset_path("logotipe.png")
 
         if favicon_path.is_file():
             try:
                 window.iconbitmap(default=str(favicon_path))
-                return
             except tk.TclError:
                 pass
 
         if logo_path.is_file():
             try:
-                window._rtg_logo_image = tk.PhotoImage(file=str(logo_path))
+                logo_image = tk.PhotoImage(file=str(logo_path))
+                resize_factor = max(1, max(logo_image.width(), logo_image.height()) // 32)
+                if resize_factor > 1:
+                    logo_image = logo_image.subsample(resize_factor, resize_factor)
+                window._rtg_logo_image = logo_image
                 window.iconphoto(True, window._rtg_logo_image)
             except tk.TclError:
                 pass
@@ -195,9 +269,14 @@ class RtGDisplayGUI:
         self._show_message(title, message, "info")
 
     def _showwarning(self, title: str, message: str) -> None:
+        if "no video" in f"{title} {message}".lower():
+            self._play_sound("error.mp3")
+        else:
+            self._play_sound("notification.mp3")
         self._show_message(title, message, "warning")
 
     def _showerror(self, title: str, message: str) -> None:
+        self._play_sound("error.mp3")
         self._show_message(title, message, "error")
     
     def _configure_style(self):
@@ -455,6 +534,10 @@ class RtGDisplayGUI:
             slider_value = int(float(val))
             value_widget.delete(0, tk.END)
             value_widget.insert(0, str(slider_value))
+            if self._slider_sound_suppressed:
+                self._slider_sound_suppressed = False
+            else:
+                self._play_sound("slider.mp3")
             on_change(slider_value)
 
         def on_value_confirm(_event=None):
@@ -464,9 +547,13 @@ class RtGDisplayGUI:
                 input_value = int(slider.get())
 
             input_value = max(min_val, min(max_val, input_value))
+            changed = input_value != int(slider.get())
             value_widget.delete(0, tk.END)
             value_widget.insert(0, str(input_value))
+            self._slider_sound_suppressed = changed
             slider.set(input_value)
+            if changed:
+                self._play_sound("tap.mp3")
             return "break"
 
         value_widget.bind("<Return>", on_value_confirm)
@@ -519,6 +606,10 @@ class RtGDisplayGUI:
         )
         self.palette_combo.current(0)
         self.palette_combo.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.palette_combo.bind(
+            "<<ComboboxSelected>>",
+            lambda _event: self._play_sound("tap.mp3")
+        )
 
         tk.Button(
             controls,
@@ -555,12 +646,120 @@ class RtGDisplayGUI:
             self.palette_combo["values"] = self._palette_labels()
             self.palette_combo.current(0)
 
+    def _show_palette_color_dialog(self):
+        """Open the RGB editor used to add a custom palette color."""
+        dialog = tk.Toplevel(self.root)
+        self._set_window_icon(dialog)
+        dialog.title("Add palette color")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        dialog.configure(bg=self.bg_primary)
+
+        content = tk.Frame(dialog, bg=self.bg_primary, padx=20, pady=18)
+        content.pack(fill=tk.BOTH, expand=True)
+        tk.Label(
+            content,
+            text="Custom color",
+            font=("Segoe UI", 11, "bold"),
+            bg=self.bg_primary,
+            fg=self.text_primary,
+        ).pack(anchor="w", pady=(0, 12))
+
+        fields = {}
+        fields_frame = tk.Frame(content, bg=self.bg_primary)
+        fields_frame.pack(fill=tk.X)
+        for channel in ("Red", "Green", "Blue"):
+            field_frame = tk.Frame(fields_frame, bg=self.bg_primary)
+            field_frame.pack(side=tk.LEFT, padx=(0, 8))
+            tk.Label(
+                field_frame,
+                text=channel,
+                bg=self.bg_primary,
+                fg=self.text_secondary,
+                font=("Segoe UI", 9),
+            ).pack()
+            entry = tk.Entry(field_frame, width=5, justify=tk.CENTER)
+            entry.insert(0, "255")
+            entry.pack(pady=(4, 0))
+            entry.bind("<ButtonPress-1>", lambda _event: self._play_sound("tap.mp3"))
+            fields[channel] = entry
+
+        def choose_custom_color():
+            self._play_sound("tap.mp3")
+            selected = colorchooser.askcolor(parent=dialog, title="Custom color")
+            if selected[0] is None:
+                return
+            for channel, value in zip(("Red", "Green", "Blue"), selected[0]):
+                fields[channel].delete(0, tk.END)
+                fields[channel].insert(0, str(int(value)))
+
+        tk.Button(
+            content,
+            text="Custom colors...",
+            command=choose_custom_color,
+            bg=self.border_color,
+            fg=self.text_primary,
+            border=0,
+            padx=12,
+            pady=6,
+            cursor="hand2",
+        ).pack(anchor="w", pady=(14, 0))
+
+        result = {"color": None}
+
+        def accept_color():
+            try:
+                color = tuple(
+                    max(0, min(255, int(fields[channel].get())))
+                    for channel in ("Red", "Green", "Blue")
+                )
+            except ValueError:
+                self._showwarning("Invalid color", "RGB values must be numbers from 0 to 255.")
+                return
+            result["color"] = color
+            dialog.destroy()
+
+        buttons = tk.Frame(content, bg=self.bg_primary)
+        buttons.pack(fill=tk.X, pady=(18, 0))
+        tk.Button(
+            buttons,
+            text="Cancel",
+            command=dialog.destroy,
+            bg=self.border_color,
+            fg=self.text_primary,
+            border=0,
+            padx=14,
+            pady=7,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT)
+        tk.Button(
+            buttons,
+            text="Accept",
+            command=accept_color,
+            bg=self.accent_color,
+            fg="white",
+            border=0,
+            padx=14,
+            pady=7,
+            cursor="hand2",
+        ).pack(side=tk.RIGHT, padx=(0, 8))
+
+        dialog.protocol("WM_DELETE_WINDOW", dialog.destroy)
+        dialog.bind("<Return>", lambda _event: accept_color())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        self._center_window(dialog)
+        dialog.grab_set()
+        dialog.focus_set()
+        self.root.wait_window(dialog)
+        return result["color"]
+
     def _add_palette_color(self):
-        selected = colorchooser.askcolor(title="Add palette color")
-        if selected[0] is None:
+        self._play_sound("notification.mp3")
+        selected_color = self._show_palette_color_dialog()
+        if selected_color is None:
             return
         self.palette_colors = [list(color) for color in normalize_palette(
-            self.palette_colors + [selected[0]]
+            self.palette_colors + [selected_color]
         )]
         self._refresh_palette_combo()
         self._update_output_size()
@@ -575,6 +774,7 @@ class RtGDisplayGUI:
         self.palette_colors.pop(selected_index)
         self._refresh_palette_combo()
         self._update_output_size()
+        self._play_sound("notification.mp3")
     
     def _build_action_buttons(self, parent):
         """Build the action buttons."""
@@ -1062,6 +1262,7 @@ class RtGDisplayGUI:
             encoded_json = encode_latest_display(self.generated_display_path)
             self.root.clipboard_clear()
             self.root.clipboard_append(encoded_json)
+            self._play_sound("notification.mp3")
             self._showinfo("Copied", "Base64 saved to output/base64.json and copied to clipboard!")
         except Exception as error:
             self._showerror("Base64 failed", str(error))
@@ -1109,9 +1310,13 @@ def launch_gui(on_video_loaded=None, on_settings_changed=None, on_generate=None)
         on_video_loaded: Callback function when video is loaded
         on_settings_changed: Callback function when settings change
     """
+    _set_windows_app_user_model_id()
     root = tk.Tk()
+    root.withdraw()
+    _show_startup_window(root)
     gui = RtGDisplayGUI(root)
     gui.on_video_loaded = on_video_loaded
     gui.on_settings_changed = on_settings_changed
     gui.on_generate = on_generate
+    root.deiconify()
     gui.run()
