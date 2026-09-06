@@ -18,7 +18,11 @@ from src.display.pixel import PixelTemplate
 from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
-from src.animation.signal_logic import build_signal_network, resolve_pixel_inputs
+from src.animation.signal_logic import (
+    build_animation_timeline,
+    build_signal_network,
+    resolve_pixel_inputs,
+)
 from src.export.rtg_exporter import CombinedExporter, RtGExporter
 from src.ui.gui import launch_gui
 from src.video.processing import BLACK, WHITE, GRAY, video_to_sequence
@@ -145,7 +149,7 @@ def run_demo(
 
 
 def generate_canvas_build(settings):
-    """Generate only the physical canvas and export its display JSON."""
+    """Generate the canvas and, when available, its animation timeline."""
     reset_uuid_manager()
     pixel_template = load_real_pixel_template(
         settings.get("pixel_template")
@@ -159,6 +163,23 @@ def generate_canvas_build(settings):
         .build()
     )
     _add_canvas_gyro(matrix)
+
+    if settings.get("video"):
+        sequence = video_to_sequence(
+            settings["video"],
+            matrix,
+            settings.get("palette", [BLACK, WHITE, GRAY]),
+        )
+        build_animation_timeline(
+            matrix.build,
+            [frame.duration for frame in sequence.frames],
+        )
+        return CombinedExporter.export_complete(
+            matrix,
+            sequence,
+            settings.get("output_dir", "output"),
+        )
+
     export_paths = RtGExporter.export_physical_canvas(
         matrix,
         settings.get("output_dir", "output"),
@@ -198,6 +219,10 @@ def run_color_demo(output_dir: str = "output/color_demo"):
         frame.set_pixel_color(pixel.uuid, color)
         builder.add_frame(frame.build())
     sequence = builder.build()
+    build_animation_timeline(
+        matrix.build,
+        [frame.duration for frame in sequence.frames],
+    )
     pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
     build_signal_network(
         matrix.build,
@@ -230,6 +255,10 @@ def generate_video_build(settings):
         settings["video"],
         matrix,
         settings.get("palette", [BLACK, WHITE, GRAY]),
+    )
+    build_animation_timeline(
+        matrix.build,
+        [frame.duration for frame in sequence.frames],
     )
     build_signal_network(
         matrix.build,

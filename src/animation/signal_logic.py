@@ -67,6 +67,51 @@ def _add_delayers(
     return indexes
 
 
+def build_animation_timeline(
+    build: RtGBuild,
+    frame_durations: Sequence[float],
+) -> List[int]:
+    """Append one Delayer/Wire pair per frame in temporal order.
+
+    The first Delayer is attached to Base point 2. Each later Delayer is
+    reached from the previous Delayer through its preceding Wire.
+    """
+    if not frame_durations:
+        raise ValueError("At least one frame duration is required")
+
+    delayer_indexes: List[int] = []
+    previous_wire_index = None
+    for frame_index, duration in enumerate(frame_durations):
+        delayer_connections = (
+            [["2", "2", to_rtg_index(0)]]
+            if previous_wire_index is None
+            else [["2", "4", to_rtg_index(previous_wire_index)]]
+        )
+        delayer_index = build.add_block(
+            RtGBlock(
+                "Delayer",
+                connections=delayer_connections,
+                properties={
+                    "DelayDeactivation": True,
+                    "Delay": duration,
+                    "RGB": [21, 95, 163],
+                    "Frame": frame_index,
+                },
+            )
+        )
+        delayer_indexes.append(delayer_index)
+
+        wire_index = build.add_block(
+            RtGBlock(
+                "Wire",
+                connections=[["3", OR_OUTPUT, to_rtg_index(delayer_index)]],
+            )
+        )
+        previous_wire_index = wire_index
+
+    return delayer_indexes
+
+
 def _connect_pixel_sources(
     build: RtGBuild,
     source_indexes: Sequence[int],
@@ -187,4 +232,8 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
         if not isinstance(target_index, int) or not 1 <= target_index <= len(build.blocks):
             continue
         if build.blocks[target_index - 1].block_type == "Delayer":
-            errors.append(f"Wire {block_index}: signal target cannot be a Delayer")
+            target_point = block.connections[1][1]
+            if target_point != "1":
+                errors.append(
+                    f"Wire {block_index}: Delayer target must use point 1"
+                )

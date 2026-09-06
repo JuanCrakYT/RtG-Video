@@ -938,6 +938,16 @@ class RtGDisplayGUI:
             self.video_info_label.config(
                 text=f"{file_name} • {file_size_mb:.1f} MB"
             )
+
+            self.preview_total_frames = 0
+            if cv2 is not None:
+                capture = cv2.VideoCapture(str(self.loaded_video_path))
+                if capture.isOpened():
+                    self.preview_total_frames = int(
+                        capture.get(cv2.CAP_PROP_FRAME_COUNT)
+                    ) or 0
+                capture.release()
+            self._update_output_size()
             
             if self.on_video_loaded:
                 self.on_video_loaded(file_path)
@@ -978,7 +988,11 @@ class RtGDisplayGUI:
         )
         total = width * height * non_black_colors
         black_pixels = width * height
-        total_objects = total * self.pixel_base_object_count + 2
+        total_objects = (
+            total * self.pixel_base_object_count
+            + 2
+            + 2 * self.preview_total_frames
+        )
         self.output_size_label.config(
             text=(
                 f"{width} × {height} × {non_black_colors} "
