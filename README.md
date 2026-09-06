@@ -1,7 +1,7 @@
 # RtG Video
 
 > **Status:** Unreleased / Testing and working
-> **Version:** 0.706
+> **Version:** 0.707.1
 
 Animated display generator for **Road To Gramby's (Roblox)**.
 

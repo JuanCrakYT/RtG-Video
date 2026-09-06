@@ -219,6 +219,9 @@ class PixelTemplate:
         color: Optional[Sequence[int]] = None,
         position_x: Optional[float] = None,
         position_y: Optional[float] = None,
+        frame_index: Optional[int] = None,
+        canvas_size: Optional[Tuple[int, int]] = None,
+        version=None,
     ) -> Tuple[Pixel, Dict[int, int]]:
         """
         Create a pixel instance by cloning the template with remapped indices.
@@ -260,6 +263,8 @@ class PixelTemplate:
         }:
             self._uuid_mapping[original_uuid] = uuid_manager.generate_and_register()
         uuid_mapping = self._uuid_mapping
+
+        root_template_index = self._find_template_root_index()
         
         # Clone each block from template
         for old_idx, template_block in enumerate(self.template.blocks):
@@ -278,6 +283,23 @@ class PixelTemplate:
                 and new_block.properties.get("RGB") != [0, 0, 0]
             ):
                 new_block.properties["RGB"] = [int(channel) for channel in color]
+
+            if old_idx == root_template_index:
+                new_block.properties["Frame-Uses"] = []
+            
+                if frame_index is not None:
+                    new_block.properties["Frame-Index"] = frame_index
+                    new_block.properties["Frame-Relative-Pos"] = [str(x), y]
+            
+                if canvas_size is not None:
+                    canvas_width, canvas_height = canvas_size
+                    new_block.properties["Canvas-Size"] = [
+                        str(canvas_width),
+                        canvas_height,
+                    ]
+            
+                if version is not None:
+                    new_block.properties["RtG-Video-Version"] = version
             
             # Remap all connections
             for old_conn in template_block.connections:

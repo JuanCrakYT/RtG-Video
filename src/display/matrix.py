@@ -9,7 +9,7 @@ from .pixel import Pixel, PixelTemplate
 from ..rtg.blocks import RtGBlock, RtGBuild
 from ..rtg.cframe import create_pixel_offset_cframe
 from ..rtg.uuid import get_uuid_manager
-from ..config import DEFAULT_CANVAS_Y_OFFSET
+from ..config import DEFAULT_CANVAS_Y_OFFSET, get_project_version
 
 
 MIN_CANVAS_DIMENSION = 1
@@ -48,6 +48,9 @@ class DisplayMatrix:
         self.height = height
         self.template = pixel_template
         self.build = RtGBuild()
+
+        # Version is read from the root README.md.
+        self.version = get_project_version()
         
         # Create Base block
         self.base_index = self.build.create_base()
@@ -84,6 +87,8 @@ class DisplayMatrix:
             int: Total number of blocks created
         """
         total_blocks = 1  # Base block
+
+        pixel_index = 0
         
         for y in range(self.height):
             for x in range(self.width):
@@ -103,12 +108,17 @@ class DisplayMatrix:
                         color,
                         position_x=(x - (self.width - 1) / 2) * spacing,
                         position_y=y * spacing + DEFAULT_CANVAS_Y_OFFSET,
+                        frame_index=pixel_index,
+                        canvas_size=(self.width, self.height),
+                        version=self.version,
                     )
                     layers.append(pixel)
                     total_blocks += pixel.get_block_count()
+
                 if not layers and self.palette_by_position:
                     pixel_uuid = get_uuid_manager().generate_and_register((x, y))
                     base_block = self.build.blocks[self.base_index]
+
                     self.build.add_block(
                         RtGBlock(
                             "Part",
@@ -117,11 +127,20 @@ class DisplayMatrix:
                                 pixel_uuid,
                                 self.base_index + 1,
                             ]],
-                            properties={"RGB": [0, 0, 0]},
+                            properties={
+                                "RGB": [0, 0, 0],
+                                "Frame-Uses": [],
+                                "Frame-Index": pixel_index,
+                                "Frame-Relative-Pos": [str(x), y],
+                                "Canvas-Size": [str(self.width), self.height],
+                                "RtG-Video-Version": self.version,
+                            },
                         )
                     )
+
                     if "EphemeralAttachments" not in base_block.properties:
                         base_block.properties["EphemeralAttachments"] = {}
+
                     base_block.properties["EphemeralAttachments"][pixel_uuid] = {
                         "partName": "Base",
                         "cframe": create_pixel_offset_cframe(
@@ -130,10 +149,16 @@ class DisplayMatrix:
                             spacing,
                         ).to_list(),
                     }
+
                     total_blocks += 1
+
                 self.pixel_layers[(x, y)] = layers
+
                 if layers:
                     self.pixels[(x, y)] = layers[0]
+
+                # One Frame-Index per canvas position.
+                pixel_index += 1
         
         return total_blocks
     
