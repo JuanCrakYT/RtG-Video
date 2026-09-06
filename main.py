@@ -19,6 +19,8 @@ from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
 from src.animation.signal_logic import (
+    add_start_button,
+    add_physical_gate_or_table,
     build_animation_timeline,
     build_signal_network,
     resolve_pixel_inputs,
@@ -165,14 +167,21 @@ def generate_canvas_build(settings):
     _add_canvas_gyro(matrix)
 
     if settings.get("video"):
+        start_button_index = add_start_button(matrix.build, matrix.base_index)
         sequence = video_to_sequence(
             settings["video"],
             matrix,
             settings.get("palette", [BLACK, WHITE, GRAY]),
         )
+        add_physical_gate_or_table(
+            matrix.build,
+            matrix.base_index,
+            len(list(matrix.iter_pixels())),
+        )
         build_animation_timeline(
             matrix.build,
             [frame.duration for frame in sequence.frames],
+            start_source_index=start_button_index,
         )
         return CombinedExporter.export_complete(
             matrix,
@@ -211,6 +220,12 @@ def run_color_demo(output_dir: str = "output/color_demo"):
         .build()
     )
     _add_canvas_gyro(matrix)
+    start_button_index = add_start_button(matrix.build, matrix.base_index)
+    add_physical_gate_or_table(
+        matrix.build,
+        matrix.base_index,
+        len(list(matrix.iter_pixels())),
+    )
     pixel = matrix.get_pixel(0, 0)
     colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
     builder = SequenceBuilder()
@@ -222,6 +237,7 @@ def run_color_demo(output_dir: str = "output/color_demo"):
     build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
+        start_source_index=start_button_index,
     )
     pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
     build_signal_network(
@@ -251,14 +267,21 @@ def generate_video_build(settings):
         .build()
     )
     _add_canvas_gyro(matrix)
+    start_button_index = add_start_button(matrix.build, matrix.base_index)
     sequence = video_to_sequence(
         settings["video"],
         matrix,
         settings.get("palette", [BLACK, WHITE, GRAY]),
     )
+    add_physical_gate_or_table(
+        matrix.build,
+        matrix.base_index,
+        len(list(matrix.iter_pixels())),
+    )
     build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
+        start_source_index=start_button_index,
     )
     build_signal_network(
         matrix.build,

@@ -4,7 +4,10 @@ from pathlib import Path
 
 from src.animation.signal_logic import (
     PixelSignalEndpoint,
+    add_start_button,
+    add_physical_gate_or_table,
     build_signal_network,
+    build_animation_timeline,
     resolve_pixel_inputs,
     validate_signal_connections,
 )
@@ -30,6 +33,57 @@ def _make_display_endpoints():
         )
         endpoints[f"pixel_{pixel_number}"] = PixelSignalEndpoint(block_index, "3")
     return build, endpoints
+
+
+def test_start_button_uses_base_physical_and_output_connections():
+    build = RtGBuild()
+    base_index = build.create_base()
+
+    button_index = add_start_button(build, base_index)
+    delayer_indexes = build_animation_timeline(
+        build,
+        [0.1, 0.1, 0.1],
+        start_source_index=button_index,
+    )
+
+    button = build.blocks[button_index]
+    assert sum(block.block_type == "Button" for block in build.blocks) == 1
+    assert button.properties == {"RGB": [255, 0, 0]}
+    assert button.connections == [["1", "2", 1], ["3", "4", 1]]
+    assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
+    assert build.blocks[delayer_indexes[0]].connections == [["2", "2", 2]]
+    assert build.blocks[delayer_indexes[1]].connections == [["2", "4", 4]]
+    assert build.blocks[delayer_indexes[2]].connections == [["2", "4", 6]]
+
+    wires = [block for block in build.blocks if block.block_type == "Wire"]
+    assert len(wires) == 3
+    assert all(len(wire.connections) == 1 for wire in wires)
+
+
+def test_physical_gate_or_table_uses_mounting_connections_only():
+    build = RtGBuild()
+    base_index = build.create_base()
+
+    gate_indexes = add_physical_gate_or_table(build, base_index, 3)
+
+    assert len(gate_indexes) == 3
+    assert [build.blocks[index].block_type for index in gate_indexes] == [
+        "Gate-OR",
+        "Gate-OR",
+        "Gate-OR",
+    ]
+    assert build.blocks[gate_indexes[0]].connections == [["4", "4", 1]]
+    assert build.blocks[gate_indexes[1]].connections == [["4", "2", 2]]
+    assert build.blocks[gate_indexes[2]].connections == [["4", "2", 3]]
+    assert all(
+        len(build.blocks[index].connections) == 1
+        for index in gate_indexes
+    )
+    assert all(
+        connection[0] == "4"
+        for index in gate_indexes
+        for connection in build.blocks[index].connections
+    )
 
 
 def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():

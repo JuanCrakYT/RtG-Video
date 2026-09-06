@@ -67,9 +67,51 @@ def _add_delayers(
     return indexes
 
 
+def add_start_button(build: RtGBuild, base_index: int) -> int:
+    """Add one red Button wired to the Base physical and output ports."""
+    return build.add_block(
+        RtGBlock(
+            "Button",
+            connections=[
+                ["1", "2", to_rtg_index(base_index)],
+                ["3", "4", to_rtg_index(base_index)],
+            ],
+            properties={"RGB": [255, 0, 0]},
+        )
+    )
+
+
+def add_physical_gate_or_table(
+    build: RtGBuild,
+    base_index: int,
+    gate_count: int,
+) -> List[int]:
+    """Add a physical Gate-OR table below Base without signal connections."""
+    if gate_count < 0:
+        raise ValueError("Gate-OR table size cannot be negative")
+
+    gate_indexes: List[int] = []
+    previous_index = None
+    for _ in range(gate_count):
+        parent_index = base_index if previous_index is None else previous_index
+        parent_point = "4" if previous_index is None else "2"
+        gate_indexes.append(
+            build.add_block(
+                RtGBlock(
+                    "Gate-OR",
+                    connections=[["4", parent_point, to_rtg_index(parent_index)]],
+                )
+            )
+        )
+        previous_index = gate_indexes[-1]
+
+    return gate_indexes
+
+
 def build_animation_timeline(
     build: RtGBuild,
     frame_durations: Sequence[float],
+    start_source_index: int = 0,
 ) -> List[int]:
     """Append one Delayer/Wire pair per frame in temporal order.
 
@@ -83,7 +125,7 @@ def build_animation_timeline(
     previous_wire_index = None
     for frame_index, duration in enumerate(frame_durations):
         delayer_connections = (
-            [["2", "2", to_rtg_index(0)]]
+            [["2", "2", to_rtg_index(start_source_index)]]
             if previous_wire_index is None
             else [["2", "4", to_rtg_index(previous_wire_index)]]
         )
