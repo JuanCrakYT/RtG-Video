@@ -8,7 +8,7 @@ from src.animation.frame import FrameBuilder
 from src.display.matrix import MatrixBuilder
 from src.display.pixel import PixelTemplate
 from src.rtg.cframe import create_pixel_offset_cframe
-from src.rtg.format import load_pixel_template_from_file
+from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
 from src.video import processing
 
@@ -156,3 +156,54 @@ def test_pixel_offset_cframe_uses_required_rotation_for_overlays():
     assert create_pixel_offset_cframe(5, 3, 1).to_list() == [
         5.0, 3.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, -1e16, 0.0, 0.0, 1.0
     ]
+
+
+def test_pixel_color_analysis_only_keeps_used_colors_per_pixel():
+    frames = [
+        [[RED, BLUE, BLACK, RED]],
+        [[BLACK, BLUE, BLACK, RED]],
+        [[RED, BLACK, BLACK, RED]],
+        [[BLACK, BLUE, BLACK, RED]],
+        [[RED, BLACK, BLACK, RED]],
+    ]
+
+    states = processing.analyze_pixel_states(frames)
+
+    assert states[(0, 0)]["colors"] == {RED}
+    assert states[(1, 0)]["colors"] == {BLUE}
+    assert (2, 0) not in states
+    assert states[(3, 0)]["colors"] == {RED}
+    assert states[(0, 0)]["frames"] == {0: RED, 2: RED, 4: RED}
+    assert states[(1, 0)]["frames"] == {0: BLUE, 1: BLUE, 3: BLUE}
+
+    for state in states.values():
+        assert all(isinstance(color, tuple) for color in state["frames"].values())
+
+
+def test_empty_pixel_part_is_attached_to_base_with_uuid():
+    reset_uuid_manager()
+    template = PixelTemplate(load_pixel_template_from_file(str(TEMPLATE_PATH)))
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(2, 1)
+        .set_template(template)
+        .set_palette_by_position({(0, 0): set(), (1, 0): {RED}})
+        .build()
+    )
+
+    data = matrix.build.to_json()
+    base = data[matrix.base_index]
+    empty_parts = [
+        block
+        for block in data
+        if block[0] == "Part" and block[2].get("RGB") == [0, 0, 0]
+    ]
+
+    assert len(empty_parts) == 2
+    empty_part = empty_parts[0]
+    assert len(empty_part[1]) == 1
+    connection = empty_part[1][0]
+    assert connection[0] == "1"
+    assert connection[2] == matrix.base_index + 1
+    assert connection[1] in base[2]["EphemeralAttachments"]
+    assert validate_build_json(data) == (True, None)

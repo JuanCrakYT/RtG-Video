@@ -27,7 +27,15 @@ from src.animation.signal_logic import (
 )
 from src.export.rtg_exporter import CombinedExporter, RtGExporter
 from src.ui.gui import launch_gui
-from src.video.processing import BLACK, WHITE, GRAY, video_to_sequence
+from src.video.processing import (
+    BLACK,
+    WHITE,
+    GRAY,
+    analyze_pixel_color_usage,
+    analyze_video_colors,
+    sequence_from_color_frames,
+    video_to_sequence,
+)
 
 
 def load_real_pixel_template(template_path: str = None):
@@ -156,23 +164,40 @@ def generate_canvas_build(settings):
     pixel_template = load_real_pixel_template(
         settings.get("pixel_template")
     )
-    matrix = (
+    palette = settings.get("palette", [BLACK, WHITE, GRAY])
+    if settings.get("video"):
+        duration, color_frames = analyze_video_colors(
+            settings["video"],
+            int(settings["width"]),
+            int(settings["height"]),
+            palette,
+        )
+        usage = analyze_pixel_color_usage(color_frames)
+        pixel_palettes = {
+            (x, y): usage.get((x, y), set())
+            for y in range(int(settings["height"]))
+            for x in range(int(settings["width"]))
+        }
+    else:
+        duration = None
+        color_frames = None
+        pixel_palettes = None
+    matrix_builder = (
         MatrixBuilder()
         .set_dimensions(int(settings["width"]), int(settings["height"]))
         .set_spacing(DEFAULT_PIXEL_SPACING)
         .set_template(pixel_template)
-        .set_palette(settings.get("palette", [BLACK, WHITE, GRAY]))
-        .build()
     )
+    if pixel_palettes is not None:
+        matrix_builder.set_palette_by_position(pixel_palettes)
+    else:
+        matrix_builder.set_palette(palette)
+    matrix = matrix_builder.build()
     _add_canvas_gyro(matrix)
 
     if settings.get("video"):
         start_button_index = add_start_button(matrix.build, matrix.base_index)
-        sequence = video_to_sequence(
-            settings["video"],
-            matrix,
-            settings.get("palette", [BLACK, WHITE, GRAY]),
-        )
+        sequence = sequence_from_color_frames(matrix, duration, color_frames)
         add_physical_gate_or_table(
             matrix.build,
             matrix.base_index,
@@ -258,21 +283,27 @@ def generate_video_build(settings):
     """Run resize, nearest-palette quantization, physical wiring, and export."""
     reset_uuid_manager()
     pixel_template = load_real_pixel_template(settings["pixel_template"] if "pixel_template" in settings else None)
+    palette = settings.get("palette", [BLACK, WHITE, GRAY])
+    duration, color_frames = analyze_video_colors(
+        settings["video"], settings["width"], settings["height"], palette
+    )
+    usage = analyze_pixel_color_usage(color_frames)
+    pixel_palettes = {
+        (x, y): usage.get((x, y), set())
+        for y in range(settings["height"])
+        for x in range(settings["width"])
+    }
     matrix = (
         MatrixBuilder()
         .set_dimensions(settings["width"], settings["height"])
         .set_spacing(DEFAULT_PIXEL_SPACING)
         .set_template(pixel_template)
-        .set_palette(settings.get("palette", [BLACK, WHITE, GRAY]))
+        .set_palette_by_position(pixel_palettes)
         .build()
     )
     _add_canvas_gyro(matrix)
     start_button_index = add_start_button(matrix.build, matrix.base_index)
-    sequence = video_to_sequence(
-        settings["video"],
-        matrix,
-        settings.get("palette", [BLACK, WHITE, GRAY]),
-    )
+    sequence = sequence_from_color_frames(matrix, duration, color_frames)
     add_physical_gate_or_table(
         matrix.build,
         matrix.base_index,

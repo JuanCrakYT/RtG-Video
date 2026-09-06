@@ -6,7 +6,9 @@ Handles a 2D grid of pixels with activation states and statistics.
 
 from typing import Iterable, List, Dict, Set, Tuple, Optional, Sequence
 from .pixel import Pixel, PixelTemplate
-from ..rtg.blocks import RtGBuild
+from ..rtg.blocks import RtGBlock, RtGBuild
+from ..rtg.cframe import create_pixel_offset_cframe
+from ..rtg.uuid import get_uuid_manager
 from ..config import DEFAULT_CANVAS_Y_OFFSET
 
 
@@ -25,6 +27,7 @@ class DisplayMatrix:
         height: int,
         pixel_template: PixelTemplate,
         palette: Optional[Iterable[Sequence[int]]] = None,
+        palette_by_position: Optional[Dict[Tuple[int, int], Iterable[Sequence[int]]]] = None,
     ):
         """
         Initialize a display matrix.
@@ -59,6 +62,13 @@ class DisplayMatrix:
             ))
             if palette is not None else None
         )
+        self.palette_by_position = {
+            position: tuple(dict.fromkeys(
+                tuple(int(channel) for channel in color)
+                for color in sorted(colors)
+            ))
+            for position, colors in (palette_by_position or {}).items()
+        }
         
         # Track active pixels
         self.active_pixels: Set[Tuple[int, int]] = set()
@@ -77,7 +87,9 @@ class DisplayMatrix:
         
         for y in range(self.height):
             for x in range(self.width):
-                colors = self.palette or (None,)
+                colors = self.palette_by_position.get((x, y), self.palette)
+                if colors is None:
+                    colors = (None,)
                 layers = []
                 for color in colors:
                     if color == (0, 0, 0):
@@ -94,6 +106,31 @@ class DisplayMatrix:
                     )
                     layers.append(pixel)
                     total_blocks += pixel.get_block_count()
+                if not layers and self.palette_by_position:
+                    pixel_uuid = get_uuid_manager().generate_and_register((x, y))
+                    base_block = self.build.blocks[self.base_index]
+                    self.build.add_block(
+                        RtGBlock(
+                            "Part",
+                            connections=[[
+                                "1",
+                                pixel_uuid,
+                                self.base_index + 1,
+                            ]],
+                            properties={"RGB": [0, 0, 0]},
+                        )
+                    )
+                    if "EphemeralAttachments" not in base_block.properties:
+                        base_block.properties["EphemeralAttachments"] = {}
+                    base_block.properties["EphemeralAttachments"][pixel_uuid] = {
+                        "partName": "Base",
+                        "cframe": create_pixel_offset_cframe(
+                            (x - (self.width - 1) / 2) * spacing,
+                            y * spacing + DEFAULT_CANVAS_Y_OFFSET,
+                            spacing,
+                        ).to_list(),
+                    }
+                    total_blocks += 1
                 self.pixel_layers[(x, y)] = layers
                 if layers:
                     self.pixels[(x, y)] = layers[0]
@@ -217,6 +254,7 @@ class MatrixBuilder:
         self.spacing = 1.0
         self.template = None
         self.palette = None
+        self.palette_by_position = None
     
     def set_dimensions(self, width: int, height: int) -> 'MatrixBuilder':
         """Set matrix dimensions."""
@@ -247,6 +285,14 @@ class MatrixBuilder:
             for color in palette
         ))
         return self
+
+    def set_palette_by_position(
+        self,
+        palette_by_position: Dict[Tuple[int, int], Iterable[Sequence[int]]],
+    ) -> 'MatrixBuilder':
+        """Create physical layers only for colors used at each position."""
+        self.palette_by_position = palette_by_position
+        return self
     
     def build(self) -> DisplayMatrix:
         """Build and return the DisplayMatrix."""
@@ -258,6 +304,7 @@ class MatrixBuilder:
             self.height,
             self.template,
             self.palette,
+            self.palette_by_position,
         )
         matrix.initialize_build(self.spacing)
         
