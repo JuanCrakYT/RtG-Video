@@ -1,5 +1,8 @@
 # RtG Video
 
+> **Status:** Unreleased / Testing and working
+> **Version:** 0.706
+
 Animated display generator for **Road To Gramby's (Roblox)**.
 
 RtG Video converts videos into low-resolution animated pixel displays that can be exported as Road To Gramby's-compatible data. The project combines video processing, pixel-matrix generation, animation management, and RtG save-format handling into a single pipeline.
