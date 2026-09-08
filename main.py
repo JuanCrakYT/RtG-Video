@@ -246,13 +246,14 @@ def run_color_demo(output_dir: str = "output/color_demo"):
     )
     _add_canvas_gyro(matrix)
     start_button_index = add_start_button(matrix.build, matrix.base_index)
-    add_physical_gate_or_table(
-        matrix.build,
-        matrix.base_index,
-        len(list(matrix.iter_pixels())),
-    )
     pixel = matrix.get_pixel(0, 0)
     colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
+    gate_or_count = max(len(list(matrix.iter_pixels())), len(colors) - 1)
+    gate_or_indexes = add_physical_gate_or_table(
+        matrix.build,
+        matrix.base_index,
+        gate_or_count,
+    )
     builder = SequenceBuilder()
     for color in colors:
         frame = FrameBuilder(duration=0.1).set_frame_number(len(builder.frames))
@@ -270,6 +271,7 @@ def run_color_demo(output_dir: str = "output/color_demo"):
         {index: [pixel.uuid] for index in range(len(sequence.frames))},
         pixel_inputs,
         [frame.duration for frame in sequence.frames],
+        gate_or_indexes,
     )
     paths = CombinedExporter.export_complete(matrix, sequence, output_dir)
     print(f"Exported 1 pixel / 8 color frames to {output_dir}")
@@ -304,7 +306,7 @@ def generate_video_build(settings):
     _add_canvas_gyro(matrix)
     start_button_index = add_start_button(matrix.build, matrix.base_index)
     sequence = sequence_from_color_frames(matrix, duration, color_frames)
-    add_physical_gate_or_table(
+    gate_or_indexes = add_physical_gate_or_table(
         matrix.build,
         matrix.base_index,
         len(list(matrix.iter_pixels())),
@@ -322,6 +324,7 @@ def generate_video_build(settings):
         },
         resolve_pixel_inputs(matrix.iter_pixels()),
         [frame.duration for frame in sequence.frames],
+        gate_or_indexes,
     )
     return CombinedExporter.export_complete(matrix, sequence, "output")
 

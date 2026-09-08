@@ -99,7 +99,8 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
         7: ["pixel_0", "pixel_3"],
     }
 
-    build_signal_network(build, active_pixels, endpoints, [0.1] * 8)
+    gate_or_pool = add_physical_gate_or_table(build, 0, 16)
+    build_signal_network(build, active_pixels, endpoints, [0.1] * 8, gate_or_pool)
 
     delayers = [block for block in build.blocks if block.block_type == "Delayer"]
     gate_ors = [block for block in build.blocks if block.block_type == "Gate-OR"]
@@ -107,7 +108,6 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
     wires = [block for block in build.blocks if block.block_type == "Wire"]
 
     assert len(delayers) == 8
-    assert len(gate_ors) == 15
     assert not notes
     assert len(wires) > 0
     assert not validate_signal_connections(build)
@@ -118,13 +118,34 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
         assert wire.connections[1][1] in {"1", "2", "3", "6"}
 
 
-def test_pixel_with_three_frames_gets_a_private_two_gate_chain():
+def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
     build, endpoints = _make_display_endpoints()
+    gate_or_pool = add_physical_gate_or_table(build, 0, 1)
+    build_signal_network(
+        build,
+        {0: ["pixel_0"], 1: [], 2: ["pixel_0"]},
+        {"pixel_0": endpoints["pixel_0"]},
+        [0.1, 0.1, 0.1],
+        gate_or_pool,
+    )
+
+    assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
+    assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 1
+    assert not any(block.block_type == "Note" for block in build.blocks)
+    wires = [block for block in build.blocks if block.block_type == "Wire"]
+    assert len(wires) == 3
+    assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
+
+
+def test_pixel_with_three_frames_uses_one_balanced_or_tree():
+    build, endpoints = _make_display_endpoints()
+    gate_or_pool = add_physical_gate_or_table(build, 0, 2)
     build_signal_network(
         build,
         {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]},
         endpoints,
         [0.1, 0.1, 0.1],
+        gate_or_pool,
     )
 
     gate_indexes = [
@@ -139,37 +160,98 @@ def test_pixel_with_three_frames_gets_a_private_two_gate_chain():
     assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
 
 
-def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
-    build, endpoints = _make_display_endpoints()
-    build_signal_network(
-        build,
-        {0: ["pixel_0"], 1: [], 2: ["pixel_0"]},
-        {"pixel_0": endpoints["pixel_0"]},
-        [0.1, 0.1, 0.1],
-    )
-
-    assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
-    assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 1
-    assert not any(block.block_type == "Note" for block in build.blocks)
-    output_wire = [block for block in build.blocks if block.block_type == "Wire"][-1]
-    assert output_wire.connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
-
-
-def test_three_active_frames_extend_to_two_ors_and_resolve_uuid_to_splitter():
+def test_three_active_frames_use_balanced_tree_and_resolve_uuid_to_splitter():
     build, endpoints = _make_display_endpoints()
     pixels = [type("PixelStub", (), {"uuid": "pixel_0", "get_signal_endpoint": lambda self: (endpoints["pixel_0"].block_index, "3")})()]
     resolved = resolve_pixel_inputs(pixels)
 
+    gate_or_pool = add_physical_gate_or_table(build, 0, 2)
     build_signal_network(
         build,
         {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]},
         resolved,
         [0.1, 0.1, 0.1],
+        gate_or_pool,
     )
 
     assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
     assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 2
     assert not validate_signal_connections(build)
+
+
+def test_four_frames_form_balanced_or_tree_with_three_gates():
+    build, endpoints = _make_display_endpoints()
+    gate_or_pool = add_physical_gate_or_table(build, 0, 3)
+    build_signal_network(
+        build,
+        {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"], 3: ["pixel_0"]},
+        endpoints,
+        [0.1, 0.1, 0.1, 0.1],
+        gate_or_pool,
+    )
+
+    gate_indexes = [
+        index for index, block in enumerate(build.blocks)
+        if block.block_type == "Gate-OR"
+    ]
+    assert len(gate_indexes) == 3
+
+    gate_input_counts = []
+    for gate_index in gate_indexes:
+        inputs = sum(
+            1
+            for wire in build.blocks
+            if wire.block_type == "Wire" and wire.connections[1][2] == gate_index + 1
+        )
+        gate_input_counts.append(inputs)
+    assert all(count >= 2 for count in gate_input_counts)
+
+    root_inputs = gate_input_counts[-1]
+    assert root_inputs >= 2
+
+
+def test_multiple_pixels_get_independent_or_trees():
+    build, endpoints = _make_display_endpoints()
+    gate_or_pool = add_physical_gate_or_table(build, 0, 2)
+    build_signal_network(
+        build,
+        {
+            0: ["pixel_0", "pixel_1"],
+            1: ["pixel_0", "pixel_1"],
+        },
+        endpoints,
+        [0.1, 0.1],
+        gate_or_pool,
+    )
+
+    pixel_0_inputs = sum(
+        1
+        for wire in build.blocks
+        if wire.block_type == "Wire" and wire.connections[1][2] == endpoints["pixel_0"].block_index + 1
+    )
+    pixel_1_inputs = sum(
+        1
+        for wire in build.blocks
+        if wire.block_type == "Wire" and wire.connections[1][2] == endpoints["pixel_1"].block_index + 1
+    )
+    assert pixel_0_inputs == 1
+    assert pixel_1_inputs == 1
+
+
+def test_physical_gate_ors_remain_attached_to_build():
+    build, endpoints = _make_display_endpoints()
+    gate_or_pool = add_physical_gate_or_table(build, 0, 1)
+    build_signal_network(
+        build,
+        {0: ["pixel_0"], 1: ["pixel_0"]},
+        endpoints,
+        [0.1, 0.1],
+        gate_or_pool,
+    )
+
+    gate_ors = [block for block in build.blocks if block.block_type == "Gate-OR"]
+    assert len(gate_ors) == 1
+    assert any(block.block_type == "Wire" for block in build.blocks)
 
 
 def test_real_pixel_parent_references_are_one_based():
@@ -202,7 +284,7 @@ def test_splitter_endpoint_point_is_derived_from_template_connection():
     assert endpoint.point_id == "8"
 
 
-def test_real_pixel_asset_generates_three_frame_reference_counts():
+def test_real_pixel_asset_generates_balanced_tree_counts():
     template_path = Path(__file__).parents[1] / "assets" / "builds" / "pixel" / "pixel.json"
     template = PixelTemplate(load_pixel_template_from_file(str(template_path)))
     matrix = MatrixBuilder().set_dimensions(1, 1).set_template(template).build()
@@ -215,11 +297,13 @@ def test_real_pixel_asset_generates_three_frame_reference_counts():
     )
     assert endpoints[pixel.uuid].point_id == "3"
 
+    gate_or_pool = add_physical_gate_or_table(matrix.build, matrix.base_index, 2)
     build_signal_network(
         matrix.build,
         {0: [pixel.uuid], 1: [pixel.uuid], 2: [pixel.uuid]},
         endpoints,
         [0.1, 0.1, 0.1],
+        gate_or_pool,
     )
 
     assert sum(block.block_type == "Delayer" for block in matrix.build.blocks) == 3

@@ -1,7 +1,7 @@
 """Build physical RtG signal networks for animation frames.
 
 The network owns one Delayer per frame. A pixel that appears in multiple
-frames receives its own Gate-OR chain; no OR chain or Wire is shared between
+frames receives its own Gate-OR tree; no OR chain or Wire is shared between
 pixels. Connection IDs are numeric because they are part of the RtG format.
 """
 
@@ -22,6 +22,19 @@ class PixelSignalEndpoint:
 
     block_index: int
     point_id: str
+
+
+@dataclass
+class GateORInfo:
+    """Logical information about a pre-generated Gate-OR object."""
+
+    source_frame: int = -1
+    child_a: int = -1
+    child_b: int = -1
+
+    @property
+    def is_leaf(self) -> bool:
+        return self.source_frame >= 0
 
 
 def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpoint]:
@@ -154,51 +167,66 @@ def build_animation_timeline(
     return delayer_indexes
 
 
+def _allocate_pixel_or_tree(sources: Sequence[int]) -> List[GateORInfo]:
+    """Allocate a balanced binary logical tree for the given frame sources."""
+    if len(sources) <= 1:
+        return []
+
+    nodes: List[GateORInfo] = []
+
+    def build_tree(source_indices: Sequence[int]) -> int:
+        if len(source_indices) == 1:
+            gate = GateORInfo(source_frame=source_indices[0])
+            nodes.append(gate)
+            return len(nodes) - 1
+        mid = len(source_indices) // 2
+        left = build_tree(source_indices[:mid])
+        right = build_tree(source_indices[mid:])
+        gate = GateORInfo()
+        gate.child_a = left
+        gate.child_b = right
+        nodes.append(gate)
+        return len(nodes) - 1
+
+    build_tree(list(range(len(sources))))
+    return nodes
+
+
 def _connect_pixel_sources(
     build: RtGBuild,
     source_indexes: Sequence[int],
     endpoint: PixelSignalEndpoint,
+    or_tree: Sequence[GateORInfo],
+    physical_map: Mapping[int, int],
 ) -> List[int]:
-    """Connect frame sources to one physical pixel endpoint.
-
-    For one source, a single Wire is enough. For two or more sources, the
-    chain is left-associated and each Gate-OR is private to this pixel:
-
-        source0 + source1 -> OR0
-        OR0 + source2      -> OR1
-        OR1 + source3      -> OR2
-        ... -> pixel endpoint
-    """
+    """Connect frame sources to one physical pixel endpoint using pre-built Gate-ORs."""
     if not source_indexes:
         return []
 
-    created_indexes: List[int] = []
     if len(source_indexes) == 1:
-        created_indexes.append(
+        return [
             _wire_between(
                 build,
                 source_indexes[0],
                 endpoint.block_index,
                 endpoint.point_id,
             )
-        )
-        return created_indexes
+        ]
 
-    first_or = build.add_block(RtGBlock("Gate-OR"))
-    created_indexes.append(first_or)
-    _wire_between(build, source_indexes[0], first_or, OR_INPUT_A)
-    _wire_between(build, source_indexes[1], first_or, OR_INPUT_B)
-    current_output = first_or
+    def resolve(node: int) -> int:
+        info = or_tree[node]
+        if info.is_leaf:
+            return source_indexes[info.source_frame]
+        gate_index = physical_map[node]
+        left_index = resolve(info.child_a)
+        right_index = resolve(info.child_b)
+        _wire_between(build, left_index, gate_index, OR_INPUT_A)
+        _wire_between(build, right_index, gate_index, OR_INPUT_B)
+        return gate_index
 
-    for source_index in source_indexes[2:]:
-        next_or = build.add_block(RtGBlock("Gate-OR"))
-        created_indexes.append(next_or)
-        _wire_between(build, current_output, next_or, OR_INPUT_A)
-        _wire_between(build, source_index, next_or, OR_INPUT_B)
-        current_output = next_or
-
-    _wire_between(build, current_output, endpoint.block_index, endpoint.point_id)
-    return created_indexes
+    root_index = resolve(len(or_tree) - 1)
+    _wire_between(build, root_index, endpoint.block_index, endpoint.point_id)
+    return []
 
 
 def build_signal_network(
@@ -206,12 +234,12 @@ def build_signal_network(
     frame_active_pixels: Mapping[int, Iterable[str]],
     pixel_inputs: Mapping[str, PixelSignalEndpoint],
     frame_durations: Sequence[float],
+    gate_or_pool: Sequence[int] = (),
 ) -> Dict[str, List[int]]:
     """Append the physical frame signal network to an existing display build.
 
-    ``pixel_inputs`` must resolve each UUID to a real block and numeric point
-    in the display build. This function deliberately does not create Notes or
-    synthetic PixelUUID properties.
+    ``gate_or_pool`` should contain the pre-generated physical Gate-OR indexes.
+    The logical trees reuse those objects instead of creating new blocks.
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
@@ -241,8 +269,31 @@ def build_signal_network(
                 raise ValueError(f"No physical input registered for pixel UUID {pixel_uuid}")
             active_frame_indexes[pixel_uuid].append(delayer_indexes[frame_index])
 
+    pool = list(gate_or_pool)
+    or_allocations: Dict[str, tuple] = {}
     for pixel_uuid, source_indexes in active_frame_indexes.items():
-        _connect_pixel_sources(build, source_indexes, pixel_inputs[pixel_uuid])
+        or_tree = _allocate_pixel_or_tree(source_indexes)
+        internal_nodes = [i for i, node in enumerate(or_tree) if not node.is_leaf]
+        if len(internal_nodes) > len(pool):
+            raise ValueError(
+                f"Not enough physical Gate-ORs for pixel {pixel_uuid}: "
+                f"need {len(internal_nodes)}, have {len(pool)}"
+            )
+        physical_map = {node_index: pool.pop(0) for node_index in internal_nodes}
+        or_allocations[pixel_uuid] = (or_tree, physical_map)
+
+    for pixel_uuid, endpoint in pixel_inputs.items():
+        source_indexes = active_frame_indexes[pixel_uuid]
+        if not source_indexes:
+            continue
+        or_tree, physical_map = or_allocations[pixel_uuid]
+        _connect_pixel_sources(
+            build,
+            source_indexes,
+            endpoint,
+            or_tree,
+            physical_map,
+        )
 
     return active_frame_indexes
 
