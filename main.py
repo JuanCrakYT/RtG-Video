@@ -198,15 +198,35 @@ def generate_canvas_build(settings):
     if settings.get("video"):
         start_button_index = add_start_button(matrix.build, matrix.base_index)
         sequence = sequence_from_color_frames(matrix, duration, color_frames)
-        add_physical_gate_or_table(
+        pixel_frame_counts = {
+            pixel.uuid: sum(
+                1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
+            )
+            for pixel in matrix.iter_pixels()
+        }
+        gate_or_count = max(
+            len(list(matrix.iter_pixels())),
+            sum(max(0, count - 1) for count in pixel_frame_counts.values()),
+        )
+        gate_or_indexes = add_physical_gate_or_table(
             matrix.build,
             matrix.base_index,
-            len(list(matrix.iter_pixels())),
+            gate_or_count,
         )
         build_animation_timeline(
             matrix.build,
             [frame.duration for frame in sequence.frames],
             start_source_index=start_button_index,
+        )
+        build_signal_network(
+            matrix.build,
+            {
+                index: frame.get_active_pixels()
+                for index, frame in enumerate(sequence.frames)
+            },
+            resolve_pixel_inputs(matrix.iter_pixels()),
+            [frame.duration for frame in sequence.frames],
+            gate_or_indexes,
         )
         return CombinedExporter.export_complete(
             matrix,
@@ -306,10 +326,20 @@ def generate_video_build(settings):
     _add_canvas_gyro(matrix)
     start_button_index = add_start_button(matrix.build, matrix.base_index)
     sequence = sequence_from_color_frames(matrix, duration, color_frames)
+    pixel_frame_counts = {
+        pixel.uuid: sum(
+            1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
+        )
+        for pixel in matrix.iter_pixels()
+    }
+    gate_or_count = max(
+        len(list(matrix.iter_pixels())),
+        sum(max(0, count - 1) for count in pixel_frame_counts.values()),
+    )
     gate_or_indexes = add_physical_gate_or_table(
         matrix.build,
         matrix.base_index,
-        len(list(matrix.iter_pixels())),
+        gate_or_count,
     )
     build_animation_timeline(
         matrix.build,
