@@ -548,15 +548,32 @@ class RtGDisplayGUI:
             fg=self.accent_color
         )
         self.output_size_label.pack(side=tk.LEFT, padx=(10, 0))
-
+        
+        # Analyze real total button (left of total objects label)
+        self.analyze_total_btn = tk.Button(
+            output_frame,
+            text="Analyze real total",
+            command=self._on_analyze_real_total,
+            bg=self.border_color,
+            fg=self.text_primary,
+            font=('Segoe UI', 9),
+            padx=12,
+            pady=4,
+            border=0,
+            cursor='hand2',
+            activebackground='#D0D0D0',
+            state=tk.NORMAL
+        )
+        self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        
         self.total_objects_label = tk.Label(
             output_frame,
-            text="0 total objects",
+            text="0 minimum objects",
             font=('Segoe UI', 9, 'bold'),
             bg=self.bg_secondary,
             fg=self.accent_color
         )
-        self.total_objects_label.pack(side=tk.RIGHT)
+        self.total_objects_label.pack(side=tk.RIGHT, padx=(8, 0))
         self._update_output_size()
     
     def _build_slider(self, parent, label: str, min_val: int, max_val: int, 
@@ -823,6 +840,7 @@ class RtGDisplayGUI:
         self.palette_colors = [list(color) for color in normalize_palette(
             self.palette_colors + [selected_color]
         )]
+        self._analyzed_total_objects = None
         self._refresh_palette_combo()
         self._update_output_size()
 
@@ -834,6 +852,7 @@ class RtGDisplayGUI:
             self._showinfo("Required color", "Black is always required in the palette.")
             return
         self.palette_colors.pop(selected_index)
+        self._analyzed_total_objects = None
         self._refresh_palette_combo()
         self._update_output_size()
         self._play_sound("notification.mp3")
@@ -900,7 +919,7 @@ class RtGDisplayGUI:
         preview_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Generate button
-        generate_btn = tk.Button(
+        self.generate_btn = tk.Button(
             right_frame,
             text="✨ Generate canvas",
             command=self._on_generate,
@@ -913,7 +932,7 @@ class RtGDisplayGUI:
             cursor='hand2',
             activebackground=self.accent_hover
         )
-        generate_btn.pack(side=tk.LEFT)
+        self.generate_btn.pack(side=tk.LEFT)
     
     def _on_load_video(self):
         """Handle video loading."""
@@ -947,31 +966,36 @@ class RtGDisplayGUI:
                         capture.get(cv2.CAP_PROP_FRAME_COUNT)
                     ) or 0
                 capture.release()
+            # Reset analyzed total when video changes
+            self._analyzed_total_objects = None
             self._update_output_size()
             
             if self.on_video_loaded:
                 self.on_video_loaded(file_path)
-    
+        
     def _on_width_changed(self, value: int):
         """Handle width slider change."""
+        self._analyzed_total_objects = None
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
             height = getattr(self, 'height_value_slider').get()
             self.on_settings_changed({'width': width, 'height': height})
-
+    
     def _on_asset_type_changed(self, _event=None):
         """Apply the selected asset template to generation settings."""
         if self.asset_combo is None:
             return
         self.selected_asset_type = self.asset_combo.get()
         self.pixel_base_object_count = self._load_asset_object_count(self.selected_asset_type)
+        self._analyzed_total_objects = None
         self._update_output_size()
         if self.on_settings_changed:
             self.on_settings_changed({'pixel_template': str(self.asset_templates[self.selected_asset_type])})
     
     def _on_height_changed(self, value: int):
         """Handle height slider change."""
+        self._analyzed_total_objects = None
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
@@ -999,7 +1023,162 @@ class RtGDisplayGUI:
                 f"({total} pixels, just {black_pixels} black pixels)"
             )
         )
-        self.total_objects_label.config(text=f"{total_objects} total objects")
+        # Update total objects label - show minimum or analyzed total
+        if getattr(self, '_analyzed_total_objects', None) is not None:
+            self.total_objects_label.config(text=f"{self._analyzed_total_objects:,} total objects")
+        else:
+            self.total_objects_label.config(text=f"{total_objects:,} minimum objects")
+    
+    def _on_analyze_real_total(self):
+        """Analyze the loaded video to calculate the real total objects for the build."""
+        if not self.loaded_video_path:
+            self._showwarning("No Video", "Please load a video first to analyze real total objects.")
+            return
+        
+        # Update UI to show analyzing state
+        self.analyze_total_btn.config(text="Analyzing...", state=tk.DISABLED, bg="#FFD54F")
+        self.total_objects_label.config(text="Analyzing video...")
+        self.root.update_idletasks()
+        
+        try:
+            # Run analysis in background thread to keep UI responsive
+            import threading
+            import queue
+            
+            result_queue = queue.Queue()
+            
+            def analyze_worker():
+                try:
+                    # Import needed modules
+                    from src.rtg.uuid import reset_uuid_manager
+                    from src.display.matrix import MatrixBuilder
+                    from src.display.pixel import PixelTemplate
+                    from src.rtg.format import load_pixel_template_from_file
+                    from src.animation.signal_logic import (
+                        add_start_button, add_physical_gate_or_table,
+                        build_animation_timeline, build_signal_network, resolve_pixel_inputs
+                    )
+                    from src.video.processing import (
+                        analyze_video_colors, analyze_pixel_color_usage,
+                        sequence_from_color_frames
+                    )
+                    from src.config import DEFAULT_PIXEL_SPACING
+                    from src.rtg.blocks import RtGBlock
+                    from src.export.rtg_exporter import CombinedExporter
+                    from src.video.processing import BLACK, WHITE, GRAY
+                    
+                    # Get settings
+                    width = getattr(self, 'width_value_slider').get()
+                    height = getattr(self, 'height_value_slider').get()
+                    palette = [list(color) for color in self.palette_colors]
+                    
+                    reset_uuid_manager()
+                    pixel_template = PixelTemplate(load_pixel_template_from_file(
+                        str(self.asset_templates[self.selected_asset_type])
+                    ))
+                    
+                    # Analyze video colors
+                    duration, color_frames = analyze_video_colors(
+                        str(self.loaded_video_path),
+                        width,
+                        height,
+                        palette,
+                    )
+                    
+                    usage = analyze_pixel_color_usage(color_frames)
+                    pixel_palettes = {
+                        (x, y): usage.get((x, y), set())
+                        for y in range(height)
+                        for x in range(width)
+                    }
+                    
+                    # Build matrix
+                    matrix = (
+                        MatrixBuilder()
+                        .set_dimensions(width, height)
+                        .set_spacing(DEFAULT_PIXEL_SPACING)
+                        .set_template(pixel_template)
+                        .set_palette_by_position(pixel_palettes)
+                        .build()
+                    )
+                    # Add canvas gyro
+                    matrix.build.add_block(
+                        RtGBlock(
+                            "Gyro",
+                            connections=[["1", "1", 1]],
+                            properties={"Activated": True, "RGB": [73, 26, 112]},
+                        )
+                    )
+                    
+                    # Create animation sequence
+                    start_button_index = add_start_button(matrix.build, matrix.base_index)
+                    sequence = sequence_from_color_frames(matrix, duration, color_frames)
+                    
+                    # Calculate gate OR count
+                    pixel_frame_counts = {
+                        pixel.uuid: sum(
+                            1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
+                        )
+                        for pixel in matrix.iter_pixels()
+                    }
+                    gate_or_count = max(
+                        len(list(matrix.iter_pixels())),
+                        sum(max(0, count - 1) for count in pixel_frame_counts.values()),
+                    )
+                    
+                    gate_or_indexes = add_physical_gate_or_table(
+                        matrix.build,
+                        matrix.base_index,
+                        gate_or_count,
+                    )
+                    
+                    build_animation_timeline(
+                        matrix.build,
+                        [frame.duration for frame in sequence.frames],
+                        start_source_index=start_button_index,
+                    )
+                    
+                    build_signal_network(
+                        matrix.build,
+                        {
+                            index: frame.get_active_pixels()
+                            for index, frame in enumerate(sequence.frames)
+                        },
+                        resolve_pixel_inputs(matrix.iter_pixels()),
+                        [frame.duration for frame in sequence.frames],
+                        gate_or_indexes,
+                    )
+                    
+                    # Return the real total object count
+                    real_total = len(matrix.build)
+                    result_queue.put(('success', real_total))
+                    
+                except Exception as e:
+                    result_queue.put(('error', str(e)))
+            
+            def check_result():
+                try:
+                    status, result = result_queue.get_nowait()
+                    if status == 'success':
+                        self._analyzed_total_objects = result
+                        self.total_objects_label.config(text=f"{result:,} total objects")
+                        self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
+                        self._play_sound("notification.mp3")
+                    else:
+                        self.total_objects_label.config(text="Analysis failed")
+                        self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
+                        self._showerror("Analysis Failed", f"Could not analyze video: {result}")
+                except queue.Empty:
+                    self.root.after(100, check_result)
+            
+            thread = threading.Thread(target=analyze_worker, daemon=True)
+            thread.start()
+            self.root.after(100, check_result)
+            
+        except Exception as e:
+            self.total_objects_label.config(text="Analysis failed")
+            self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
+            self._showerror("Analysis Failed", f"Could not start analysis: {e}")
     
     def _close_preview(self):
         """Stop preview playback and close the preview window."""
@@ -1362,15 +1541,37 @@ class RtGDisplayGUI:
         
         if self.on_generate:
             try:
-                output_paths = self.on_generate(self.get_settings())
-                self.generated_json = output_paths.get('json')
-                self.generated_display_path = Path(output_paths['display'])
-                self._showinfo(
-                    "Generated",
-                    f"Generated physical canvas {width}×{height}\n"
-                    f"Display exported to: {output_paths['display']}"
-                )
+                import inspect
+                sig = inspect.signature(self.on_generate)
+                params = list(sig.parameters.keys())
+                
+                # Check if callback supports async mode (has 3rd parameter for completion)
+                if len(params) >= 3:
+                    # Async mode: callback(root, settings, on_complete)
+                    def on_complete(output_paths):
+                        self.generated_json = output_paths.get('json')
+                        self.generated_display_path = Path(output_paths['display'])
+                        self._showinfo(
+                            "Generated",
+                            f"Generated physical canvas {width}×{height}\n"
+                            f"Display exported to: {output_paths['display']}"
+                        )
+                        self.generate_btn.config(state=tk.NORMAL, text="✨ Generate canvas")
+                    
+                    self.generate_btn.config(state=tk.DISABLED, text="⏳ Generating...")
+                    self.on_generate(self.root, self.get_settings(), on_complete)
+                else:
+                    # Sync mode: callback(settings) -> output_paths
+                    output_paths = self.on_generate(self.get_settings())
+                    self.generated_json = output_paths.get('json')
+                    self.generated_display_path = Path(output_paths['display'])
+                    self._showinfo(
+                        "Generated",
+                        f"Generated physical canvas {width}×{height}\n"
+                        f"Display exported to: {output_paths['display']}"
+                    )
             except Exception as error:
+                self.generate_btn.config(state=tk.NORMAL, text="✨ Generate canvas")
                 self._showerror("Generation failed", str(error))
             return
 

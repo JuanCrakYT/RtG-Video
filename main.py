@@ -24,7 +24,9 @@ from src.animation.signal_logic import (
     build_animation_timeline,
     build_signal_network,
     resolve_pixel_inputs,
+    validate_signal_connections,
 )
+from src.async_gen import GenerationStage, run_async_generation
 from src.export.rtg_exporter import CombinedExporter, RtGExporter
 from src.ui.gui import launch_gui
 from src.video.processing import (
@@ -158,30 +160,58 @@ def run_demo(
     return True
 
 
-def generate_canvas_build(settings):
-    """Generate the canvas and, when available, its animation timeline."""
+def generate_canvas_build(settings, progress_callback=None, block_callback=None):
+    """Generate the canvas and, when available, its animation timeline.
+    
+    Args:
+        settings: Generation settings dictionary
+        progress_callback: Optional callback(stage, status, current, total, detail)
+        block_callback: Optional callback(blocks_current, blocks_total)
+    """
+    def report(stage, status=None, current=None, total=None, detail=None):
+        if progress_callback:
+            progress_callback(stage, status, current, total, detail)
+    
+    def report_blocks(current, total=None):
+        if block_callback:
+            block_callback(current, total)
+    
+    from src.async_gen import GenerationStage
+    
+    report(GenerationStage.PREPARATION, "active", 0, 1, "Inicializando generador...")
     reset_uuid_manager()
+    
+    report(GenerationStage.PREPARATION, "active", 1, 1, "Cargando plantilla de píxel...")
     pixel_template = load_real_pixel_template(
         settings.get("pixel_template")
     )
+    report(GenerationStage.PREPARATION, "completed", 1, 1)
+    
     palette = settings.get("palette", [BLACK, WHITE, GRAY])
+    color_frames = None
+    duration = None
+    pixel_palettes = None
+    
     if settings.get("video"):
+        report(GenerationStage.PREPARATION, "active", 0, 1, "Analizando colores del video...")
         duration, color_frames = analyze_video_colors(
             settings["video"],
             int(settings["width"]),
             int(settings["height"]),
             palette,
         )
+        report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
+        
+        report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel...")
         usage = analyze_pixel_color_usage(color_frames)
         pixel_palettes = {
             (x, y): usage.get((x, y), set())
             for y in range(int(settings["height"]))
             for x in range(int(settings["width"]))
         }
-    else:
-        duration = None
-        color_frames = None
-        pixel_palettes = None
+        report(GenerationStage.PREPARATION, "completed", 1, 1)
+    
+    report(GenerationStage.CANVAS, "active", 0, 1, "Creando matriz de píxeles...")
     matrix_builder = (
         MatrixBuilder()
         .set_dimensions(int(settings["width"]), int(settings["height"]))
@@ -192,12 +222,21 @@ def generate_canvas_build(settings):
         matrix_builder.set_palette_by_position(pixel_palettes)
     else:
         matrix_builder.set_palette(palette)
+    
+    report(GenerationStage.CANVAS, "active", 50, 100, "Construyendo matriz...")
     matrix = matrix_builder.build()
     _add_canvas_gyro(matrix)
-
+    report_blocks(len(matrix.build))
+    report(GenerationStage.CANVAS, "completed", 100, 100, f"Canvas {settings['width']}x{settings['height']} creado")
+    
     if settings.get("video"):
+        report(GenerationStage.TIMELINE, "active", 0, 1, "Creando botón de inicio...")
         start_button_index = add_start_button(matrix.build, matrix.base_index)
+        
+        report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
         sequence = sequence_from_color_frames(matrix, duration, color_frames)
+        
+        report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios...")
         pixel_frame_counts = {
             pixel.uuid: sum(
                 1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
@@ -208,37 +247,75 @@ def generate_canvas_build(settings):
             len(list(matrix.iter_pixels())),
             sum(max(0, count - 1) for count in pixel_frame_counts.values()),
         )
+        
+        report(GenerationStage.GATE_OR, "active", 0, 1, f"Creando tabla física de {gate_or_count} Gate-ORs...")
         gate_or_indexes = add_physical_gate_or_table(
             matrix.build,
             matrix.base_index,
             gate_or_count,
         )
+        report_blocks(len(matrix.build))
+        report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
+        
+        report(GenerationStage.TIMELINE, "active", 75, 100, f"Construyendo timeline ({len(sequence.frames)} frames)...")
         build_animation_timeline(
             matrix.build,
             [frame.duration for frame in sequence.frames],
             start_source_index=start_button_index,
         )
+        report_blocks(len(matrix.build))
+        report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
+        
+        report(GenerationStage.SIGNAL_NETWORK, "active", 0, 1, "Construyendo red de señales...")
+        frame_active_pixels = {
+            index: frame.get_active_pixels()
+            for index, frame in enumerate(sequence.frames)
+        }
+        total_frames = len(sequence.frames)
+        for i, (frame_idx, active_pixels) in enumerate(frame_active_pixels.items()):
+            if total_frames > 0:
+                report(GenerationStage.SIGNAL_NETWORK, "active", 
+                       i + 1, total_frames, 
+                       f"Conectando frame {frame_idx + 1}/{total_frames} ({len(active_pixels)} píxeles activos)")
+                report_blocks(len(matrix.build))
         build_signal_network(
             matrix.build,
-            {
-                index: frame.get_active_pixels()
-                for index, frame in enumerate(sequence.frames)
-            },
+            frame_active_pixels,
             resolve_pixel_inputs(matrix.iter_pixels()),
             [frame.duration for frame in sequence.frames],
             gate_or_indexes,
         )
-        return CombinedExporter.export_complete(
+        report_blocks(len(matrix.build))
+        report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
+        
+        report(GenerationStage.VALIDATION, "active", 0, 1, "Validando build...")
+        from src.animation.signal_logic import validate_signal_connections
+        errors = validate_signal_connections(matrix.build)
+        if errors:
+            report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+        report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
+        
+        report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
+        result = CombinedExporter.export_complete(
             matrix,
             sequence,
             settings.get("output_dir", "output"),
         )
-
+        report_blocks(len(matrix.build))
+        report(GenerationStage.EXPORT, "completed", 1, 1, "Exportación completada")
+        
+        return result
+    
+    # No video - just static canvas
+    report(GenerationStage.EXPORT, "active", 0, 1, "Exportando canvas estático...")
     export_paths = RtGExporter.export_physical_canvas(
         matrix,
         settings.get("output_dir", "output"),
         compact=False,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.EXPORT, "completed", 1, 1, "Exportación completada")
+    
     return {**export_paths, "stats": matrix.get_stats()}
 
 
@@ -253,10 +330,30 @@ def _add_canvas_gyro(matrix):
     )
 
 
-def run_color_demo(output_dir: str = "output/color_demo"):
-    """Export one real pixel over eight black, white, and gray frames."""
+def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None, block_callback=None):
+    """Export one real pixel over eight black, white, and gray frames.
+    
+    Args:
+        output_dir: Output directory
+        progress_callback: Optional callback(stage, status, current, total, detail)
+        block_callback: Optional callback(blocks_current, blocks_total)
+    """
+    def report(stage, status=None, current=None, total=None, detail=None):
+        if progress_callback:
+            progress_callback(stage, status, current, total, detail)
+    
+    def report_blocks(current, total=None):
+        if block_callback:
+            block_callback(current, total)
+    
+    report(GenerationStage.PREPARATION, "active", 0, 1, "Inicializando generador...")
     reset_uuid_manager()
+    
+    report(GenerationStage.PREPARATION, "active", 1, 1, "Cargando plantilla de píxel...")
     pixel_template = load_real_pixel_template()
+    report(GenerationStage.PREPARATION, "completed", 1, 1)
+    
+    report(GenerationStage.CANVAS, "active", 0, 1, "Creando matriz 1x1...")
     matrix = (
         MatrixBuilder()
         .set_dimensions(1, 1)
@@ -265,35 +362,72 @@ def run_color_demo(output_dir: str = "output/color_demo"):
         .build()
     )
     _add_canvas_gyro(matrix)
+    report_blocks(len(matrix.build))
+    report(GenerationStage.CANVAS, "completed", 100, 100, "Canvas 1x1 creado")
+    
+    report(GenerationStage.TIMELINE, "active", 0, 1, "Creando botón de inicio...")
     start_button_index = add_start_button(matrix.build, matrix.base_index)
     pixel = matrix.get_pixel(0, 0)
     colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
     gate_or_count = max(len(list(matrix.iter_pixels())), len(colors) - 1)
+    
+    report(GenerationStage.GATE_OR, "active", 0, 1, f"Creando tabla física de {gate_or_count} Gate-ORs...")
     gate_or_indexes = add_physical_gate_or_table(
         matrix.build,
         matrix.base_index,
         gate_or_count,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
+    
+    report(GenerationStage.TIMELINE, "active", 0, 1, "Creando secuencia de 8 frames...")
     builder = SequenceBuilder()
-    for color in colors:
+    for i, color in enumerate(colors):
+        report(GenerationStage.TIMELINE, "active", i + 1, len(colors), f"Frame {i + 1}/{len(colors)}: {color}")
         frame = FrameBuilder(duration=0.1).set_frame_number(len(builder.frames))
         frame.set_pixel_color(pixel.uuid, color)
         builder.add_frame(frame.build())
     sequence = builder.build()
+    
+    report(GenerationStage.TIMELINE, "active", len(colors), len(colors), f"Construyendo timeline ({len(sequence.frames)} frames)...")
     build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
         start_source_index=start_button_index,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
+    
+    report(GenerationStage.SIGNAL_NETWORK, "active", 0, 1, "Construyendo red de señales...")
     pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
+    frame_active_pixels = {
+        index: [pixel.uuid] for index in range(len(sequence.frames))
+    }
+    for i in range(len(sequence.frames)):
+        report(GenerationStage.SIGNAL_NETWORK, "active", i + 1, len(sequence.frames), f"Conectando frame {i + 1}")
+        report_blocks(len(matrix.build))
     build_signal_network(
         matrix.build,
-        {index: [pixel.uuid] for index in range(len(sequence.frames))},
+        frame_active_pixels,
         pixel_inputs,
         [frame.duration for frame in sequence.frames],
         gate_or_indexes,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
+    
+    report(GenerationStage.VALIDATION, "active", 0, 1, "Validando build...")
+    from src.animation.signal_logic import validate_signal_connections
+    errors = validate_signal_connections(matrix.build)
+    if errors:
+        report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+    report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
+    
+    report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
     paths = CombinedExporter.export_complete(matrix, sequence, output_dir)
+    report_blocks(len(matrix.build))
+    report(GenerationStage.EXPORT, "completed", 1, 1, "Exportación completada")
+    
     print(f"Exported 1 pixel / 8 color frames to {output_dir}")
     print(f"Palette: black={BLACK}, white={WHITE}, gray={GRAY}")
     for key, path in paths.items():
@@ -301,20 +435,47 @@ def run_color_demo(output_dir: str = "output/color_demo"):
     return True
 
 
-def generate_video_build(settings):
-    """Run resize, nearest-palette quantization, physical wiring, and export."""
+def generate_video_build(settings, progress_callback=None, block_callback=None):
+    """Run resize, nearest-palette quantization, physical wiring, and export.
+    
+    Args:
+        settings: Generation settings dictionary
+        progress_callback: Optional callback(stage, status, current, total, detail)
+        block_callback: Optional callback(blocks_current, blocks_total)
+    """
+    def report(stage, status=None, current=None, total=None, detail=None):
+        if progress_callback:
+            progress_callback(stage, status, current, total, detail)
+    
+    def report_blocks(current, total=None):
+        if block_callback:
+            block_callback(current, total)
+    
+    report(GenerationStage.PREPARATION, "active", 0, 1, "Inicializando generador...")
     reset_uuid_manager()
+    
+    report(GenerationStage.PREPARATION, "active", 1, 1, "Cargando plantilla de píxel...")
     pixel_template = load_real_pixel_template(settings["pixel_template"] if "pixel_template" in settings else None)
+    report(GenerationStage.PREPARATION, "completed", 1, 1)
+    
     palette = settings.get("palette", [BLACK, WHITE, GRAY])
+    
+    report(GenerationStage.PREPARATION, "active", 0, 1, "Analizando colores del video...")
     duration, color_frames = analyze_video_colors(
         settings["video"], settings["width"], settings["height"], palette
     )
+    report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
+    
+    report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel...")
     usage = analyze_pixel_color_usage(color_frames)
     pixel_palettes = {
         (x, y): usage.get((x, y), set())
         for y in range(settings["height"])
         for x in range(settings["width"])
     }
+    report(GenerationStage.PREPARATION, "completed", 1, 1)
+    
+    report(GenerationStage.CANVAS, "active", 0, 1, "Creando matriz de píxeles...")
     matrix = (
         MatrixBuilder()
         .set_dimensions(settings["width"], settings["height"])
@@ -324,8 +485,16 @@ def generate_video_build(settings):
         .build()
     )
     _add_canvas_gyro(matrix)
+    report_blocks(len(matrix.build))
+    report(GenerationStage.CANVAS, "completed", 100, 100, f"Canvas {settings['width']}x{settings['height']} creado")
+    
+    report(GenerationStage.TIMELINE, "active", 0, 1, "Creando botón de inicio...")
     start_button_index = add_start_button(matrix.build, matrix.base_index)
+    
+    report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
     sequence = sequence_from_color_frames(matrix, duration, color_frames)
+    
+    report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios...")
     pixel_frame_counts = {
         pixel.uuid: sum(
             1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
@@ -336,27 +505,66 @@ def generate_video_build(settings):
         len(list(matrix.iter_pixels())),
         sum(max(0, count - 1) for count in pixel_frame_counts.values()),
     )
+    
+    report(GenerationStage.GATE_OR, "active", 0, 1, f"Creando tabla física de {gate_or_count} Gate-ORs...")
     gate_or_indexes = add_physical_gate_or_table(
         matrix.build,
         matrix.base_index,
         gate_or_count,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
+    
+    report(GenerationStage.TIMELINE, "active", 75, 100, f"Construyendo timeline ({len(sequence.frames)} frames)...")
     build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
         start_source_index=start_button_index,
     )
+    report_blocks(len(matrix.build))
+    report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
+    
+    report(GenerationStage.SIGNAL_NETWORK, "active", 0, 1, "Construyendo red de señales...")
+    frame_active_pixels = {
+        index: frame.get_active_pixels()
+        for index, frame in enumerate(sequence.frames)
+    }
+    total_frames = len(sequence.frames)
+    for i, (frame_idx, active_pixels) in enumerate(frame_active_pixels.items()):
+        if total_frames > 0:
+            report(GenerationStage.SIGNAL_NETWORK, "active", 
+                   i + 1, total_frames, 
+                   f"Conectando frame {frame_idx + 1}/{total_frames} ({len(active_pixels)} píxeles activos)")
+            report_blocks(len(matrix.build))
     build_signal_network(
         matrix.build,
-        {
-            index: frame.get_active_pixels()
-            for index, frame in enumerate(sequence.frames)
-        },
+        frame_active_pixels,
         resolve_pixel_inputs(matrix.iter_pixels()),
         [frame.duration for frame in sequence.frames],
         gate_or_indexes,
     )
-    return CombinedExporter.export_complete(matrix, sequence, "output")
+    report_blocks(len(matrix.build))
+    report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
+    
+    report(GenerationStage.VALIDATION, "active", 0, 1, "Validando build...")
+    from src.animation.signal_logic import validate_signal_connections
+    errors = validate_signal_connections(matrix.build)
+    if errors:
+        report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+    report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
+    
+    report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
+    result = CombinedExporter.export_complete(matrix, sequence, "output")
+    report_blocks(len(matrix.build))
+    report(GenerationStage.EXPORT, "completed", 1, 1, "Exportación completada")
+    
+    return result
+
+
+def run_async_generation_gui(root, settings, on_complete):
+    """Run generation asynchronously for GUI with progress window."""
+    from src.async_gen import run_async_generation
+    run_async_generation(root, settings, generate_canvas_build, on_complete)
 
 
 def main():
@@ -438,7 +646,7 @@ def main():
     else:
         # Launch GUI
         try:
-            launch_gui(on_generate=generate_canvas_build)
+            launch_gui(on_generate=run_async_generation_gui)
         except Exception as e:
             print(f"Error launching GUI: {e}")
             print("Try: python main.py --demo")
