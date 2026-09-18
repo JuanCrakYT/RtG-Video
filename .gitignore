@@ -49,3 +49,6 @@ output/
 tmp/synthetic_test.mp4
 tmp/synthetic_test.webm
 tmp/python-playback-results.json
+
+# AI
+.kilo/
