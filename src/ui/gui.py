@@ -939,7 +939,7 @@ class RtGDisplayGUI:
         file_path = filedialog.askopenfilename(
             title="Select Video File",
             filetypes=[
-                ("Video files", "*.mp4 *.avi *.mov *.mkv"),
+                ("Video files", "*.mp4 *.avi *.mov *.mkv *.webm *.wmv *.flv"),
                 ("All files", "*.*")
             ]
         )

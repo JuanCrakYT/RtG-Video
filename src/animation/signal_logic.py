@@ -11,9 +11,41 @@ from typing import Dict, Iterable, List, Mapping, Sequence
 from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
 
 
-OR_OUTPUT = "1"
-OR_INPUT_A = "2"
-OR_INPUT_B = "3"
+# TipoLocal values per object type (from RtG_Save_Format_Specification v0.406)
+TIPOLOCAL_BASE = "3"
+TIPOLOCAL_PART = "1"
+TIPOLOCAL_CONNECTOR = "5"
+TIPOLOCAL_BUTTON = "1"
+TIPOLOCAL_SWITCH = "1"
+TIPOLOCAL_INPUT_SENSOR = "2"
+TIPOLOCAL_DELAYER = "2"
+TIPOLOCAL_WIRE = "3"
+TIPOLOCAL_GATE_OR = "4"
+TIPOLOCAL_GATE_AND = "4"
+TIPOLOCAL_GATE_NOT = "4"
+TIPOLOCAL_SPLITTER = "3"
+TIPOLOCAL_SERVO = "1"
+TIPOLOCAL_GYRO = "1"
+TIPOLOCAL_REMOTE_BUTTON = "1"
+
+# Connection point IDs per object (from obj_ids-spanish.md)
+BASE_POINT_LEFT = "1"
+BASE_POINT_RIGHT = "2"
+BASE_POINT_FRONT = "4"
+BASE_POINT_TOP = "5"
+BASE_POINT_BOTTOM = "6"
+
+BUTTON_POINT_OUTPUT = "1"
+
+WIRE_POINT_LEFT = "2"
+WIRE_POINT_RIGHT = "4"
+
+GATE_OR_POINT_OUTPUT = "1"
+GATE_OR_POINT_INPUT_A = "2"
+GATE_OR_POINT_INPUT_B = "3"
+
+# Delayer points not documented; assume "1" for output based on convention
+DELAYER_POINT_OUTPUT = "1"
 
 
 @dataclass(frozen=True)
@@ -49,12 +81,18 @@ def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpo
 def _wire_between(
     build: RtGBuild,
     source_index: int,
+    source_point: str,
     target_index: int,
     target_point: str,
 ) -> int:
-    """Connect a signal source to a target using the reference Wire topology."""
+    """Connect a signal source to a target using a Wire block.
+
+    Wire connections are fixed per RtG format:
+    - First connection (input side): ["3", source_point, source_index]
+    - Second connection (output side): ["1", target_point, target_index]
+    """
     wire = RtGBlock("Wire", connections=[
-        ["3", OR_OUTPUT, to_rtg_index(source_index)],
+        ["3", source_point, to_rtg_index(source_index)],
         ["1", target_point, to_rtg_index(target_index)],
     ])
     return build.add_block(wire)
@@ -81,13 +119,18 @@ def _add_delayers(
 
 
 def add_start_button(build: RtGBuild, base_index: int) -> int:
-    """Add one red Button wired to the Base physical and output ports."""
+    """Add one red Button wired to the Base physical mount and output port.
+
+    Button (TipoLocal "1") connects to Base (TipoLocal "3"):
+    - Physical mount: Base point 4 (Front)
+    - Signal output: Base point 2 (Right) - carries the button signal
+    """
     return build.add_block(
         RtGBlock(
             "Button",
             connections=[
-                ["1", "2", to_rtg_index(base_index)],
-                ["3", "4", to_rtg_index(base_index)],
+                [TIPOLOCAL_BASE, BASE_POINT_FRONT, to_rtg_index(base_index)],  # physical mount
+                [TIPOLOCAL_BASE, BASE_POINT_RIGHT, to_rtg_index(base_index)],   # signal output
             ],
             properties={"RGB": [255, 0, 0]},
         )
@@ -99,7 +142,11 @@ def add_physical_gate_or_table(
     base_index: int,
     gate_count: int,
 ) -> List[int]:
-    """Add a physical Gate-OR table below Base without signal connections."""
+    """Add a physical Gate-OR table below Base without signal connections.
+
+    Each Gate-OR (TipoLocal "4") mounts to Base (TipoLocal "3") at point 4 (Front)
+    or to previous Gate-OR at point 2 (Left) for vertical stacking.
+    """
     if gate_count < 0:
         raise ValueError("Gate-OR table size cannot be negative")
 
@@ -107,12 +154,12 @@ def add_physical_gate_or_table(
     previous_index = None
     for _ in range(gate_count):
         parent_index = base_index if previous_index is None else previous_index
-        parent_point = "4" if previous_index is None else "2"
+        parent_point = BASE_POINT_FRONT if previous_index is None else WIRE_POINT_LEFT
         gate_indexes.append(
             build.add_block(
                 RtGBlock(
                     "Gate-OR",
-                    connections=[["4", parent_point, to_rtg_index(parent_index)]],
+                    connections=[[TIPOLOCAL_BASE, parent_point, to_rtg_index(parent_index)]],
                 )
             )
         )
@@ -126,26 +173,51 @@ def build_animation_timeline(
     frame_durations: Sequence[float],
     start_source_index: int = 0,
 ) -> List[int]:
-    """Append one Delayer/Wire pair per frame in temporal order.
+    """Append one Delayer per frame in temporal order.
 
-    The first Delayer is attached to Base point 2. Each later Delayer is
-    reached from the previous Delayer through its preceding Wire.
+    Timeline chain:
+    - First Delayer connects to Start Button (TipoLocal "1") at Button's output point (1)
+    - Each later Delayer connects via a Wire from previous Delayer
+    - Final Delayer gets an output Wire for the signal network
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
 
     delayer_indexes: List[int] = []
-    previous_wire_index = None
-    for frame_index, duration in enumerate(frame_durations):
-        delayer_connections = (
-            [["2", "2", to_rtg_index(start_source_index)]]
-            if previous_wire_index is None
-            else [["2", "4", to_rtg_index(previous_wire_index)]]
+
+    # Create first Delayer connected to Start Button
+    delayer_index = build.add_block(
+        RtGBlock(
+            "Delayer",
+            connections=[["1", BUTTON_POINT_OUTPUT, to_rtg_index(start_source_index)]],
+            properties={
+                "DelayDeactivation": True,
+                "Delay": frame_durations[0],
+                "RGB": [21, 95, 163],
+                "Frame": 0,
+            },
         )
-        delayer_index = build.add_block(
+    )
+    delayer_indexes.append(delayer_index)
+
+    # Create subsequent Delayers, each connected via a Wire from previous Delayer
+    for frame_index in range(1, len(frame_durations)):
+        duration = frame_durations[frame_index]
+
+        # Create Wire connecting previous Delayer to this Delayer
+        # Wire: ["3", DELAYER_POINT_OUTPUT, prev_delayer], ["1", WIRE_POINT_RIGHT, this_delayer]
+        wire_index = _wire_between(
+            build,
+            delayer_indexes[-1], DELAYER_POINT_OUTPUT,
+            len(build.blocks) + 1, WIRE_POINT_RIGHT,
+        )
+
+        # Create this Delayer connecting to the Wire we just created
+        # Delayer connects to Wire (Wire's TipoLocal is "3")
+        build.add_block(
             RtGBlock(
                 "Delayer",
-                connections=delayer_connections,
+                connections=[["3", WIRE_POINT_RIGHT, to_rtg_index(wire_index)]],
                 properties={
                     "DelayDeactivation": True,
                     "Delay": duration,
@@ -154,21 +226,22 @@ def build_animation_timeline(
                 },
             )
         )
-        delayer_indexes.append(delayer_index)
+        delayer_indexes.append(len(build.blocks) - 1)
 
-        wire_index = build.add_block(
-            RtGBlock(
-                "Wire",
-                connections=[["3", OR_OUTPUT, to_rtg_index(delayer_index)]],
-            )
-        )
-        previous_wire_index = wire_index
+    # Final output Wire from last Delayer for signal network
+    # This Wire connects last Delayer to... (target will be added by signal network)
+    # We create it here so the timeline is complete, but signal network will connect to it
+    # Actually, signal network connects from Delayers directly via new Wires
+    # So we don't need a dangling wire. The last Delayer's output will be used by signal network.
 
     return delayer_indexes
 
 
 def _allocate_pixel_or_tree(sources: Sequence[int]) -> List[GateORInfo]:
-    """Allocate a balanced binary logical tree for the given frame sources."""
+    """Allocate a balanced binary logical tree for the given frame sources.
+
+    Returns nodes in post-order (leaves first, then internal nodes bottom-up).
+    """
     if len(sources) <= 1:
         return []
 
@@ -192,6 +265,33 @@ def _allocate_pixel_or_tree(sources: Sequence[int]) -> List[GateORInfo]:
     return nodes
 
 
+def _get_internal_nodes_level_order(or_tree: Sequence[GateORInfo]) -> List[int]:
+    """Return internal node indices in level-order (breadth-first) for correct physical gate assignment."""
+    if not or_tree:
+        return []
+
+    # Compute depth of each node
+    depths: Dict[int, int] = {}
+
+    def compute_depth(node: int) -> int:
+        if node in depths:
+            return depths[node]
+        info = or_tree[node]
+        if info.is_leaf:
+            depths[node] = 0
+        else:
+            depths[node] = 1 + max(compute_depth(info.child_a), compute_depth(info.child_b))
+        return depths[node]
+
+    for i in range(len(or_tree)):
+        compute_depth(i)
+
+    # Internal nodes sorted by depth (level-order), then by index for stability
+    internal_nodes = [i for i, node in enumerate(or_tree) if not node.is_leaf]
+    internal_nodes.sort(key=lambda n: (depths[n], n))
+    return internal_nodes
+
+
 def _connect_pixel_sources(
     build: RtGBuild,
     source_indexes: Sequence[int],
@@ -204,14 +304,13 @@ def _connect_pixel_sources(
         return []
 
     if len(source_indexes) == 1:
-        return [
-            _wire_between(
-                build,
-                source_indexes[0],
-                endpoint.block_index,
-                endpoint.point_id,
-            )
-        ]
+        wire_index = _wire_between(
+            build,
+            source_indexes[0], DELAYER_POINT_OUTPUT,
+            endpoint.block_index, endpoint.point_id,
+        )
+        build.blocks[source_indexes[0]].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
+        return [wire_index]
 
     def resolve(node: int) -> int:
         info = or_tree[node]
@@ -220,12 +319,34 @@ def _connect_pixel_sources(
         gate_index = physical_map[node]
         left_index = resolve(info.child_a)
         right_index = resolve(info.child_b)
-        _wire_between(build, left_index, gate_index, OR_INPUT_A)
-        _wire_between(build, right_index, gate_index, OR_INPUT_B)
+        # Left source -> Wire -> Gate-OR InputA
+        wire_index = _wire_between(
+            build,
+            left_index, DELAYER_POINT_OUTPUT,
+            gate_index, GATE_OR_POINT_INPUT_A,
+        )
+        build.blocks[left_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
+        # Gate-OR connects to this Wire (Wire's TipoLocal "3", Gate-OR point "2" = InputA)
+        build.blocks[gate_index].connections.append(["3", GATE_OR_POINT_INPUT_A, to_rtg_index(wire_index)])
+        # Right source -> Wire -> Gate-OR InputB
+        wire_index = _wire_between(
+            build,
+            right_index, DELAYER_POINT_OUTPUT,
+            gate_index, GATE_OR_POINT_INPUT_B,
+        )
+        build.blocks[right_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
+        # Gate-OR connects to this Wire (Wire's TipoLocal "3", Gate-OR point "3" = InputB)
+        build.blocks[gate_index].connections.append(["3", GATE_OR_POINT_INPUT_B, to_rtg_index(wire_index)])
         return gate_index
 
     root_index = resolve(len(or_tree) - 1)
-    _wire_between(build, root_index, endpoint.block_index, endpoint.point_id)
+    # Root Gate-OR output -> Wire -> Pixel endpoint (Splitter_3)
+    wire_index = _wire_between(
+        build,
+        root_index, GATE_OR_POINT_OUTPUT,
+        endpoint.block_index, endpoint.point_id,
+    )
+    build.blocks[root_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
     return []
 
 
@@ -235,10 +356,13 @@ def build_signal_network(
     pixel_inputs: Mapping[str, PixelSignalEndpoint],
     frame_durations: Sequence[float],
     gate_or_pool: Sequence[int] = (),
+    timeline_delayer_indexes: Sequence[int] = (),
 ) -> Dict[str, List[int]]:
     """Append the physical frame signal network to an existing display build.
 
     ``gate_or_pool`` should contain the pre-generated physical Gate-OR indexes.
+    ``timeline_delayer_indexes`` should contain the Delayer indexes created by
+    ``build_animation_timeline``. If not provided, new Delayers will be created.
     The logical trees reuse those objects instead of creating new blocks.
     """
     if not frame_durations:
@@ -258,7 +382,16 @@ def build_signal_network(
     if unknown_frames:
         raise ValueError(f"Frame indexes out of range: {sorted(unknown_frames)}")
 
-    delayer_indexes = _add_delayers(build, frame_durations)
+    # Use timeline Delayers if provided, otherwise create new ones
+    if timeline_delayer_indexes:
+        if len(timeline_delayer_indexes) != frame_count:
+            raise ValueError(
+                f"Expected {frame_count} timeline Delayers, got {len(timeline_delayer_indexes)}"
+            )
+        delayer_indexes = list(timeline_delayer_indexes)
+    else:
+        delayer_indexes = _add_delayers(build, frame_durations)
+
     active_frame_indexes: Dict[str, List[int]] = {
         pixel_uuid: [] for pixel_uuid in pixel_inputs
     }
@@ -273,7 +406,7 @@ def build_signal_network(
     or_allocations: Dict[str, tuple] = {}
     for pixel_uuid, source_indexes in active_frame_indexes.items():
         or_tree = _allocate_pixel_or_tree(source_indexes)
-        internal_nodes = [i for i, node in enumerate(or_tree) if not node.is_leaf]
+        internal_nodes = _get_internal_nodes_level_order(or_tree)
         if len(internal_nodes) > len(pool):
             raise ValueError(
                 f"Not enough physical Gate-ORs for pixel {pixel_uuid}: "
@@ -326,7 +459,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             continue
         if build.blocks[target_index - 1].block_type == "Delayer":
             target_point = block.connections[1][1]
-            if target_point != "1":
+            if target_point != "4":
                 errors.append(
-                    f"Wire {block_index}: Delayer target must use point 1"
+                    f"Wire {block_index}: Delayer target must use point 4"
                 )
+
+    return errors

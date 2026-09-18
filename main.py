@@ -38,6 +38,10 @@ from src.video.processing import (
     sequence_from_color_frames,
     video_to_sequence,
 )
+from src.video.analysis import (
+    analyze_video_with_gate_or_planning,
+    export_analysis_json,
+)
 
 
 def load_real_pixel_template(template_path: str = None):
@@ -258,7 +262,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
         report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
         
         report(GenerationStage.TIMELINE, "active", 75, 100, f"Construyendo timeline ({len(sequence.frames)} frames)...")
-        build_animation_timeline(
+        timeline_delayer_indexes = build_animation_timeline(
             matrix.build,
             [frame.duration for frame in sequence.frames],
             start_source_index=start_button_index,
@@ -284,6 +288,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             resolve_pixel_inputs(matrix.iter_pixels()),
             [frame.duration for frame in sequence.frames],
             gate_or_indexes,
+            timeline_delayer_indexes,
         )
         report_blocks(len(matrix.build))
         report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
@@ -390,7 +395,7 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
     sequence = builder.build()
     
     report(GenerationStage.TIMELINE, "active", len(colors), len(colors), f"Construyendo timeline ({len(sequence.frames)} frames)...")
-    build_animation_timeline(
+    timeline_delayer_indexes = build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
         start_source_index=start_button_index,
@@ -412,6 +417,7 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
         pixel_inputs,
         [frame.duration for frame in sequence.frames],
         gate_or_indexes,
+        timeline_delayer_indexes,
     )
     report_blocks(len(matrix.build))
     report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
@@ -624,9 +630,64 @@ def main():
         help="Use fallback simple pixel template if real one not found"
     )
     
+    parser.add_argument(
+        "--analyze",
+        action="store_true",
+        help="Analyze video and export Gate-OR planning JSON (no build generation)"
+    )
+    
+    parser.add_argument(
+        "--video",
+        type=str,
+        help="Video file path for analysis/generation"
+    )
+    
+    parser.add_argument(
+        "--palette",
+        type=str,
+        default="black,white,gray",
+        help="Comma-separated RGB colors for palette (e.g. '255,0,0,0,255,0,0,0,255')"
+    )
+    
     args = parser.parse_args()
     
-    if args.color_demo:
+    def parse_palette(palette_str: str):
+        """Parse comma-separated RGB values into list of tuples."""
+        parts = [int(x) for x in palette_str.split(",")]
+        if len(parts) % 3 != 0:
+            raise ValueError("Palette must have multiples of 3 values (R,G,B)")
+        return [tuple(parts[i:i+3]) for i in range(0, len(parts), 3)]
+    
+    def run_analysis(args):
+        """Run video analysis and export JSON report."""
+        if not args.video:
+            print("Error: --video is required for analysis mode")
+            return False
+        
+        palette = parse_palette(args.palette)
+        print(f"Analyzing video: {args.video}")
+        print(f"Canvas: {args.width}x{args.height}")
+        print(f"Palette: {palette}")
+        
+        analysis = analyze_video_with_gate_or_planning(
+            args.video, args.width, args.height, palette
+        )
+        
+        output_file = Path(args.output) / "analysis.json"
+        export_analysis_json(analysis, str(output_file))
+        
+        print(f"\nAnalysis complete:")
+        print(f"  Unique colors: {len(analysis.unique_colors)}")
+        print(f"  Total frames: {analysis.total_frames}")
+        print(f"  Total Gate-ORs needed: {analysis.total_gate_ors_needed}")
+        print(f"  Max Gate-ORs per pixel: {analysis.max_gate_ors_per_pixel}")
+        print(f"  Report saved to: {output_file}")
+        return True
+    
+    if args.analyze:
+        success = run_analysis(args)
+        sys.exit(0 if success else 1)
+    elif args.color_demo:
         success = run_color_demo(output_dir=args.output)
         sys.exit(0 if success else 1)
     elif args.demo:

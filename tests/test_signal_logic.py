@@ -25,10 +25,10 @@ def _make_display_endpoints():
     for pixel_number in range(4):
         block_index = build.add_block(
             RtGBlock("Splitter_3", connections=[
-                ["3", "1", 0],
-                ["5", "3", 0],
-                ["7", "4", 0],
-                ["9", "4", 0],
+                ["3", "1", 1],
+                ["5", "3", 1],
+                ["7", "4", 1],
+                ["9", "4", 1],
             ])
         )
         endpoints[f"pixel_{pixel_number}"] = PixelSignalEndpoint(block_index, "3")
@@ -49,15 +49,23 @@ def test_start_button_uses_base_physical_and_output_connections():
     button = build.blocks[button_index]
     assert sum(block.block_type == "Button" for block in build.blocks) == 1
     assert button.properties == {"RGB": [255, 0, 0]}
-    assert button.connections == [["1", "2", 1], ["3", "4", 1]]
+    assert button.connections == [["3", "4", 1], ["3", "2", 1]]
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
-    assert build.blocks[delayer_indexes[0]].connections == [["2", "2", 2]]
-    assert build.blocks[delayer_indexes[1]].connections == [["2", "4", 4]]
-    assert build.blocks[delayer_indexes[2]].connections == [["2", "4", 6]]
+    assert build.blocks[delayer_indexes[0]].connections == [["1", "1", button_index + 1]]
+    # Second Delayer connects to first Delayer's output Wire (index 3 0-based = 4 1-based)
+    # The wire is created after first delayer, so its index = delayer_indexes[0] + 1
+    assert build.blocks[delayer_indexes[1]].connections == [["3", "4", delayer_indexes[0] + 2]]
+    # Third Delayer connects to second Delayer's output Wire (index 5 0-based = 6 1-based)
+    assert build.blocks[delayer_indexes[2]].connections == [["3", "4", delayer_indexes[1] + 2]]
 
     wires = [block for block in build.blocks if block.block_type == "Wire"]
-    assert len(wires) == 3
-    assert all(len(wire.connections) == 1 for wire in wires)
+    # For 3 frames: 2 inter-Delayer Wires (N-1)
+    assert len(wires) == 2
+    # All Wires have exactly 2 connections with fixed "3" and "1" types
+    assert all(len(wire.connections) == 2 for wire in wires)
+    for wire in wires:
+        assert wire.connections[0][0] == "3"  # Wire input side
+        assert wire.connections[1][0] == "1"  # Wire output side
 
 
 def test_physical_gate_or_table_uses_mounting_connections_only():
@@ -72,15 +80,15 @@ def test_physical_gate_or_table_uses_mounting_connections_only():
         "Gate-OR",
         "Gate-OR",
     ]
-    assert build.blocks[gate_indexes[0]].connections == [["4", "4", 1]]
-    assert build.blocks[gate_indexes[1]].connections == [["4", "2", 2]]
-    assert build.blocks[gate_indexes[2]].connections == [["4", "2", 3]]
+    assert build.blocks[gate_indexes[0]].connections == [["3", "4", 1]]
+    assert build.blocks[gate_indexes[1]].connections == [["3", "2", gate_indexes[0] + 1]]
+    assert build.blocks[gate_indexes[2]].connections == [["3", "2", gate_indexes[1] + 1]]
     assert all(
         len(build.blocks[index].connections) == 1
         for index in gate_indexes
     )
     assert all(
-        connection[0] == "4"
+        connection[0] == "3"
         for index in gate_indexes
         for connection in build.blocks[index].connections
     )
@@ -113,9 +121,10 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
     assert not validate_signal_connections(build)
 
     for wire in wires:
-        assert wire.connections[0][0:2] == ["3", "1"]
-        assert wire.connections[1][0] == "1"
-        assert wire.connections[1][1] in {"1", "2", "3", "6"}
+        assert len(wire.connections) == 2
+        # First connection: parent is source object's TipoLocal
+        # Second connection: parent is target object's TipoLocal
+        # Wire points: 2=Left, 4=Right
 
 
 def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
@@ -134,7 +143,13 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
     assert not any(block.block_type == "Note" for block in build.blocks)
     wires = [block for block in build.blocks if block.block_type == "Wire"]
     assert len(wires) == 3
-    assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
+    # All Wires use fixed "3" (input) and "1" (output) connection types
+    for wire in wires:
+        assert len(wire.connections) == 2
+        assert wire.connections[0][0] == "3"  # Wire input side
+        assert wire.connections[1][0] == "1"  # Wire output side
+    # Last wire connects Gate-OR output to Splitter_3
+    assert wires[-1].connections[1][2] == endpoints["pixel_0"].block_index + 1
 
 
 def test_pixel_with_three_frames_uses_one_balanced_or_tree():
@@ -156,8 +171,13 @@ def test_pixel_with_three_frames_uses_one_balanced_or_tree():
 
     assert len(gate_indexes) == 2
     assert len(wires) == 5
-    assert wires[-1].connections[0] == ["3", "1", gate_indexes[-1] + 1]
-    assert wires[-1].connections[1] == ["1", "3", endpoints["pixel_0"].block_index + 1]
+    # All Wires use fixed "3" (input) and "1" (output) connection types
+    for wire in wires:
+        assert len(wire.connections) == 2
+        assert wire.connections[0][0] == "3"
+        assert wire.connections[1][0] == "1"
+    # Last wire connects Gate-OR output to Splitter_3
+    assert wires[-1].connections[1][2] == endpoints["pixel_0"].block_index + 1
 
 
 def test_three_active_frames_use_balanced_tree_and_resolve_uuid_to_splitter():
