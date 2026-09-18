@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Callable
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -108,8 +109,12 @@ class RtGDisplayGUI:
         self.preview_is_playing = False
         self.preview_frame_index = 0
         self.preview_total_frames = 0
+        self.preview_speed = 1.0
+        self.export_speed = 1.0
         self.preview_counter_label = None
         self.preview_toggle_btn = None
+        self.preview_slider = None
+        self.preview_speed_combo = None
         self.preview_server = None
         self.preview_process = None
         self.preview_token = None
@@ -690,7 +695,7 @@ class RtGDisplayGUI:
             lambda _event: self._play_sound("tap.mp3")
         )
 
-        tk.Button(
+        add_button = tk.Button(
             controls,
             text="+ Add",
             command=self._add_palette_color,
@@ -700,7 +705,8 @@ class RtGDisplayGUI:
             padx=12,
             pady=5,
             cursor='hand2'
-        ).pack(side=tk.LEFT, padx=(8, 0))
+        )
+        add_button.pack(side=tk.LEFT, padx=(8, 0))
 
         tk.Button(
             controls,
@@ -856,7 +862,6 @@ class RtGDisplayGUI:
         self._refresh_palette_combo()
         self._update_output_size()
         self._play_sound("notification.mp3")
-    
     def _build_action_buttons(self, parent):
         """Build the action buttons."""
         button_frame = tk.Frame(parent, bg=self.bg_primary)
@@ -1290,6 +1295,185 @@ class RtGDisplayGUI:
         if self.preview_toggle_btn is not None:
             self.preview_toggle_btn.config(text="⏸ Pause" if self.preview_is_playing else "▶ Play")
 
+    def _is_preview_focus_editable(self) -> bool:
+        """Check if focus is on an editable widget inside the preview window."""
+        if self.preview_window is None or not self.preview_window.winfo_exists():
+            return False
+        try:
+            focused = self.preview_window.focus_get()
+        except tk.TclError:
+            return False
+        if focused is None:
+            return False
+        return isinstance(focused, (tk.Entry, tk.Text, tk.Spinbox)) or (
+            hasattr(focused, "cget") and focused.cget("export") != ""
+        )
+
+    def _on_slider_frame_changed(self, value):
+        """Handle timeline slider change — seek to the selected frame."""
+        if self.preview_capture is None:
+            return
+        frame_index = int(float(value))
+        self._seek_to_frame(frame_index)
+
+    def _seek_to_frame(self, frame_index: int):
+        """Seek video to a specific frame index and display it."""
+        if self.preview_capture is None:
+            return
+        if self.preview_job is not None and self.preview_window is not None and self.preview_window.winfo_exists():
+            self.preview_window.after_cancel(self.preview_job)
+            self.preview_job = None
+        self.preview_frame_index = frame_index
+        self.preview_capture.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ret, frame = self.preview_capture.read()
+        if ret:
+            self._render_frame(frame)
+            self._update_preview_counter(frame_index)
+        if self.preview_slider is not None:
+            try:
+                self.preview_slider.set(frame_index)
+            except tk.TclError:
+                pass
+        if self.preview_is_playing:
+            fps = self.preview_capture.get(cv2.CAP_PROP_FPS)
+            delay_ms = int(1000 / fps) if fps and fps > 0 else 33
+            adjusted_delay = max(1, int(delay_ms / self.preview_speed))
+            self.preview_job = self.preview_window.after(adjusted_delay, self._draw_pixel_frame)
+
+    def _on_preview_speed_changed(self, _event=None):
+        """Handle preview speed dropdown change."""
+        if self.preview_speed_combo is None:
+            return
+        selection = self.preview_speed_combo.get()
+        try:
+            self.preview_speed = float(selection.replace("×", ""))
+        except ValueError:
+            self.preview_speed = 1.0
+
+    def _update_pause_button(self):
+        if self.preview_toggle_btn is not None:
+            self.preview_toggle_btn.config(text="⏸ Pause" if self.preview_is_playing else "▶ Play")
+
+    def _on_preview_key(self, event):
+        """Handle keyboard shortcuts for timeline seeking."""
+        if self._is_preview_focus_editable():
+            return
+        if self.preview_capture is None:
+            return
+
+        is_ctrl = bool(event.state & 0x0004)
+
+        if is_ctrl and event.keysym in ("Left", "Right"):
+            if self.preview_total_frames <= 0:
+                return
+            delta = 1 if event.keysym == "Right" else -1
+            was_playing = self.preview_is_playing
+            if was_playing:
+                self.preview_is_playing = False
+                self._update_pause_button()
+                if pygame is not None and pygame.mixer.get_init():
+                    pygame.mixer.music.pause()
+            target = self.preview_frame_index + delta
+            target = max(0, min(target, self.preview_total_frames - 1))
+            if target != self.preview_frame_index:
+                self._seek_to_frame(target)
+            return
+
+        delta_seconds = 0
+        if event.keysym == "Left":
+            delta_seconds = -5 if event.state & 0x0001 else -10
+        elif event.keysym == "Right":
+            delta_seconds = 5 if event.state & 0x0001 else 10
+        else:
+            return
+        current_ms = self.preview_capture.get(cv2.CAP_PROP_POS_MSEC)
+        total_frames = self.preview_capture.get(cv2.CAP_PROP_FRAME_COUNT)
+        fps = self.preview_capture.get(cv2.CAP_PROP_FPS) or 30
+        total_ms = (total_frames / fps) * 1000 if total_frames and fps > 0 else 0
+        new_ms = max(0, min(current_ms + delta_seconds * 1000, total_ms))
+        was_playing = self.preview_is_playing
+        if self.preview_job is not None and self.preview_window is not None and self.preview_window.winfo_exists():
+            self.preview_window.after_cancel(self.preview_job)
+            self.preview_job = None
+        self.preview_capture.set(cv2.CAP_PROP_POS_MSEC, new_ms)
+        ret, frame = self.preview_capture.read()
+        if ret:
+            self.preview_frame_index = int(self.preview_capture.get(cv2.CAP_PROP_POS_FRAMES))
+            self._render_frame(frame)
+            self._update_preview_counter(self.preview_frame_index)
+            if self.preview_slider is not None:
+                try:
+                    self.preview_slider.set(self.preview_frame_index)
+                except tk.TclError:
+                    pass
+        if was_playing:
+            fps = self.preview_capture.get(cv2.CAP_PROP_FPS)
+            delay_ms = int(1000 / fps) if fps and fps > 0 else 33
+            adjusted_delay = max(1, int(delay_ms / self.preview_speed))
+            self.preview_job = self.preview_window.after(adjusted_delay, self._draw_pixel_frame)
+
+    def _render_frame(self, frame):
+        """Render a BGR frame on the preview canvas (extracted from draw loop)."""
+        canvas = self._preview_canvas
+        if canvas is None:
+            return
+        width = self._preview_width
+        height = self._preview_height
+        cell_size = self._preview_cell_size
+        base_x = self._preview_base_x
+        base_y = self._preview_base_y
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        quantized_frame = quantize_frame(frame_rgb, width, height, self.palette_colors)
+        canvas.delete("all")
+        for y in range(height):
+            for x in range(width):
+                red, green, blue = quantized_frame[y][x]
+                color = '#%02x%02x%02x' % (red, green, blue)
+                canvas.create_rectangle(
+                    base_x + x * cell_size,
+                    base_y + y * cell_size,
+                    base_x + (x + 1) * cell_size,
+                    base_y + (y + 1) * cell_size,
+                    fill=color,
+                    outline="",
+                    tags="pixel",
+                )
+        canvas.create_rectangle(
+            base_x,
+            base_y,
+            base_x + width * cell_size,
+            base_y + height * cell_size,
+            outline="#D0D0D0",
+            width=1,
+        )
+
+    def _draw_pixel_frame(self):
+        if self.preview_window is None or not self.preview_window.winfo_exists():
+            return
+        if self.preview_capture is not None:
+            fps = self.preview_capture.get(cv2.CAP_PROP_FPS)
+            delay_ms = int(1000 / fps) if fps and fps > 0 else 33
+            if self.preview_is_playing:
+                if self._preview_audio_is_playing and pygame is not None:
+                    audio_position_ms = pygame.mixer.music.get_pos()
+                    target_frame = int(max(audio_position_ms, 0) * fps / 1000)
+                    if self.preview_total_frames > 0:
+                        target_frame %= self.preview_total_frames
+                    if target_frame < self.preview_frame_index:
+                        self.preview_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                    elif target_frame > self.preview_frame_index + 1:
+                        self.preview_capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                ret, frame = self.preview_capture.read()
+                if not ret:
+                    self.preview_capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ret, frame = self.preview_capture.read()
+                if ret:
+                    self.preview_frame_index = int(self.preview_capture.get(cv2.CAP_PROP_POS_FRAMES))
+                    self._render_frame(frame)
+                    self._update_preview_counter(self.preview_frame_index)
+        adjusted_delay = max(1, int(delay_ms / self.preview_speed)) if self.preview_capture is not None else 33
+        self.preview_job = self.preview_window.after(adjusted_delay, self._draw_pixel_frame)
+
     def _start_preview_audio(self, video_path: Path):
         """Extract and start the video's audio, if the optional audio stack is available."""
         if pygame is None or VideoFileClip is None:
@@ -1365,7 +1549,7 @@ class RtGDisplayGUI:
         self.preview_window = tk.Toplevel(self.root)
         self._set_window_icon(self.preview_window)
         self.preview_window.title(f"RtG Preview - {video_path.name}")
-        self.preview_window.geometry("560x520")
+        self.preview_window.geometry("560x600")
         self.preview_window.resizable(False, False)
         self.preview_window.protocol("WM_DELETE_WINDOW", self._close_preview)
 
@@ -1374,10 +1558,15 @@ class RtGDisplayGUI:
         self.preview_is_playing = True
         self.preview_frame_index = 0
         self.preview_total_frames = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) or 0
+        self.preview_speed = 1.0
         audio_is_playing = self._start_preview_audio(video_path)
+        self._preview_audio_is_playing = audio_is_playing
 
         canvas = tk.Canvas(self.preview_window, width=420, height=420, bg="#111111", highlightthickness=0)
-        canvas.pack(padx=16, pady=(12, 8), fill=tk.BOTH, expand=True)
+        canvas.pack(padx=16, pady=(12, 8))
+        self._preview_canvas = canvas
+        self._preview_width = width
+        self._preview_height = height
 
         info = tk.Label(
             self.preview_window,
@@ -1397,6 +1586,23 @@ class RtGDisplayGUI:
         )
         self.preview_counter_label.pack(pady=(0, 8))
 
+        self.preview_slider = tk.Scale(
+            self.preview_window,
+            from_=0,
+            to=max(0, self.preview_total_frames - 1),
+            orient=tk.HORIZONTAL,
+            command=self._on_slider_frame_changed,
+            bg="#F5F5F5",
+            fg="#212121",
+            troughcolor="#D0D0D0",
+            highlightthickness=0,
+            length=420,
+        )
+        self.preview_slider.set(0)
+        self.preview_slider.pack(pady=(0, 8))
+
+        self.preview_window.bind("<Key>", self._on_preview_key)
+
         controls = tk.Frame(self.preview_window, bg="#F5F5F5")
         controls.pack(pady=(0, 12))
 
@@ -1413,6 +1619,23 @@ class RtGDisplayGUI:
             cursor='hand2'
         )
         self.preview_toggle_btn.pack(side=tk.LEFT, padx=(0, 10))
+
+        tk.Label(
+            controls,
+            text="Speed:",
+            bg="#F5F5F5",
+            fg="#212121",
+            font=('Segoe UI', 9),
+        ).pack(side=tk.LEFT)
+        self.preview_speed_combo = ttk.Combobox(
+            controls,
+            values=["0.25×", "0.5×", "1×", "2×", "4×"],
+            state="readonly",
+            width=6,
+        )
+        self.preview_speed_combo.set("1×")
+        self.preview_speed_combo.pack(side=tk.LEFT, padx=(4, 10))
+        self.preview_speed_combo.bind("<<ComboboxSelected>>", self._on_preview_speed_changed)
 
         close_btn = tk.Button(
             controls,
@@ -1433,66 +1656,11 @@ class RtGDisplayGUI:
         cell_size = min(400 // max(width, 1), 400 // max(height, 1))
         base_x = 10
         base_y = 10
+        self._preview_cell_size = cell_size
+        self._preview_base_x = base_x
+        self._preview_base_y = base_y
 
-        def draw_pixel_frame():
-            if self.preview_window is None or not self.preview_window.winfo_exists():
-                return
-
-            if self.preview_is_playing:
-                if audio_is_playing and pygame is not None:
-                    audio_position_ms = pygame.mixer.music.get_pos()
-                    target_frame = int(max(audio_position_ms, 0) * fps / 1000)
-                    if self.preview_total_frames > 0:
-                        target_frame %= self.preview_total_frames
-                    if target_frame < self.preview_frame_index:
-                        capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-                    elif target_frame > self.preview_frame_index + 1:
-                        capture.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
-
-                ret, frame = capture.read()
-                if not ret:
-                    capture.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    ret, frame = capture.read()
-
-                if ret:
-                    self.preview_frame_index = int(capture.get(cv2.CAP_PROP_POS_FRAMES))
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    quantized_frame = quantize_frame(
-                        frame,
-                        width,
-                        height,
-                        self.palette_colors,
-                    )
-                    canvas.delete("all")
-
-                    for y in range(height):
-                        for x in range(width):
-                            red, green, blue = quantized_frame[y][x]
-                            color = '#%02x%02x%02x' % (red, green, blue)
-                            canvas.create_rectangle(
-                                base_x + x * cell_size,
-                                base_y + y * cell_size,
-                                base_x + (x + 1) * cell_size,
-                                base_y + (y + 1) * cell_size,
-                                fill=color,
-                                outline="",
-                                tags="pixel"
-                            )
-
-                    canvas.create_rectangle(
-                        base_x,
-                        base_y,
-                        base_x + width * cell_size,
-                        base_y + height * cell_size,
-                        outline="#D0D0D0",
-                        width=1
-                    )
-
-                    self._update_preview_counter(self.preview_frame_index)
-
-            self.preview_job = self.preview_window.after(delay_ms, draw_pixel_frame)
-
-        draw_pixel_frame()
+        self._draw_pixel_frame()
 
     def _on_preview(self):
         """Handle preview button."""
@@ -1585,6 +1753,7 @@ class RtGDisplayGUI:
             'height': getattr(self, 'height_value_slider').get(),
             'palette': [color.copy() for color in self.palette_colors],
             'pixel_template': str(self.asset_templates[self.selected_asset_type]),
+            'export_speed': self.export_speed,
         }
     
     def run(self):

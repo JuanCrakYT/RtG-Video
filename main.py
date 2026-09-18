@@ -238,7 +238,9 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
         start_button_index = add_start_button(matrix.build, matrix.base_index)
         
         report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
-        sequence = sequence_from_color_frames(matrix, duration, color_frames)
+        export_speed = settings.get("export_speed", 1.0)
+        adjusted_duration = duration / export_speed
+        sequence = sequence_from_color_frames(matrix, adjusted_duration, color_frames)
         
         report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios...")
         pixel_frame_counts = {
@@ -498,7 +500,9 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     start_button_index = add_start_button(matrix.build, matrix.base_index)
     
     report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
-    sequence = sequence_from_color_frames(matrix, duration, color_frames)
+    export_speed = settings.get("export_speed", 1.0)
+    adjusted_duration = duration / export_speed
+    sequence = sequence_from_color_frames(matrix, adjusted_duration, color_frames)
     
     report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios...")
     pixel_frame_counts = {

@@ -224,6 +224,51 @@ export class PreviewController {
             this.onError?.(error);
         });
         this.drawFrame();
+        document.addEventListener("keydown", (e) => this._onKeyDown(e));
+    }
+
+    _onKeyDown(event) {
+        const tag = (event.target.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+        const isCtrl = event.ctrlKey || event.metaKey;
+        if (isCtrl && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+            if (this.totalFrames <= 0) return;
+            const wasPlaying = this.isPlaying;
+            if (wasPlaying) {
+                this.isPlaying = false;
+                this.video.pause();
+                this.cancelScheduledFrame();
+            }
+            const delta = event.key === "ArrowRight" ? 1 : -1;
+            const newFrame = Math.max(0, Math.min(this.frameNumber + delta, this.totalFrames - 1));
+            if (newFrame !== this.frameNumber) {
+                this.seekToFrame(newFrame);
+            }
+            return;
+        }
+        let delta = 0;
+        if (event.key === "ArrowLeft") delta = event.shiftKey ? -5 : -10;
+        else if (event.key === "ArrowRight") delta = event.shiftKey ? 5 : 10;
+        else return;
+        event.preventDefault();
+        const duration = this.video.duration || 0;
+        const newTime = Math.max(0, Math.min(this.video.currentTime + delta, duration));
+        const wasPlaying = this.isPlaying;
+        this.cancelScheduledFrame();
+        this.video.currentTime = newTime;
+        this._renderCurrentFrame();
+        if (wasPlaying) {
+            this.video.play().catch(() => { });
+            if (this.animationFrame === null) this.drawFrame();
+        }
+    }
+
+    seekToFrame(frameIndex) {
+        if (!this.video.duration || this.totalFrames <= 0) return;
+        const newTime = (frameIndex / this.totalFrames) * this.video.duration;
+        this.video.currentTime = newTime;
+        this.frameNumber = frameIndex;
+        this._renderCurrentFrame();
     }
 
     togglePause(toggleButton) {
@@ -259,6 +304,17 @@ export class PreviewController {
         if (!this.previewWindow || (this.ownsPreviewWindow && this.previewWindow.closed)) return this.close();
         if (!this.previewCanvas || !this.isPlaying) return;
         this.animationFrame = null;
+        this._renderCurrentFrame();
+        if (typeof this.video.requestVideoFrameCallback === "function") {
+            this.callbackMode = "requestVideoFrameCallback";
+            this.animationFrame = this.video.requestVideoFrameCallback((_, nextMetadata) => this.drawFrame(nextMetadata));
+        } else {
+            this.callbackMode = "requestAnimationFrame";
+            this.animationFrame = this.windowTarget.requestAnimationFrame(() => this.drawFrame());
+        }
+    }
+
+    _renderCurrentFrame(metadata = null) {
         const mediaTime = Number.isFinite(metadata?.mediaTime) ? metadata.mediaTime : this.video.currentTime;
         const frameRate = Number(this.video.dataset.fps);
         if (Number.isFinite(mediaTime) && mediaTime >= 0 && Number.isFinite(frameRate) && frameRate > 0) {
@@ -273,13 +329,6 @@ export class PreviewController {
         this.previewContext.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
         renderQuantizedGrid(this.previewContext, processed.quantized, this.width, this.height);
         this.previewCounter.textContent = `Frame: ${this.frameNumber} / ${this.totalFrames ?? "?"}`;
-        if (typeof this.video.requestVideoFrameCallback === "function") {
-            this.callbackMode = "requestVideoFrameCallback";
-            this.animationFrame = this.video.requestVideoFrameCallback((_, nextMetadata) => this.drawFrame(nextMetadata));
-        } else {
-            this.callbackMode = "requestAnimationFrame";
-            this.animationFrame = this.windowTarget.requestAnimationFrame(() => this.drawFrame());
-        }
     }
 
     close(notify = true) {
