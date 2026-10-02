@@ -44,8 +44,9 @@ GATE_OR_POINT_OUTPUT = "1"
 GATE_OR_POINT_INPUT_A = "2"
 GATE_OR_POINT_INPUT_B = "3"
 
-# Delayer points not documented; assume "1" for output based on convention
-DELAYER_POINT_OUTPUT = "1"
+# Delayer points (from functional builds and format)
+DELAYER_POINT_OUTPUT = "1"   # Output to Wire/Button
+DELAYER_POINT_WIRE_IN = "4"  # Input from Wire (Wire's RIGHT point)
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,7 @@ def build_animation_timeline(
     """Append one Delayer per frame in temporal order.
 
     Timeline chain:
-    - First Delayer connects to Start Button (TipoLocal "1") at Button's output point (1)
+    - First Delayer connects to Start Button at Button's output point (1)
     - Each later Delayer connects via a Wire from previous Delayer
     """
     if not frame_durations:
@@ -136,8 +137,9 @@ def build_animation_timeline(
     delayer_indexes = _add_delayers(build, frame_durations)
 
     # Create first Delayer connected to Start Button
+    # Delayer uses its own TipoLocal "2" and its input point for Button (DELAYER_POINT_WIRE_IN = "4")
     build.blocks[delayer_indexes[0]].connections.append([
-        TIPOLOCAL_BUTTON, BUTTON_POINT_OUTPUT, to_rtg_index(start_source_index)
+        TIPOLOCAL_DELAYER, DELAYER_POINT_WIRE_IN, to_rtg_index(start_source_index)
     ])
 
     # Create subsequent Delayers, each connected via a Wire from previous Delayer
@@ -149,8 +151,9 @@ def build_animation_timeline(
             delayer_indexes[frame_index], WIRE_POINT_RIGHT,
         )
         # This Delayer connects to the Wire we just created
+        # Delayer uses its own TipoLocal "2" and its Wire input point ("4")
         build.blocks[delayer_indexes[frame_index]].connections.append([
-            TIPOLOCAL_WIRE, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
+            TIPOLOCAL_DELAYER, DELAYER_POINT_WIRE_IN, to_rtg_index(wire_index),
         ])
 
     return delayer_indexes
@@ -265,7 +268,14 @@ def _connect_pixel_sources(
             source_indexes[0], DELAYER_POINT_OUTPUT,
             endpoint.block_index, endpoint.point_id,
         )
-        build.blocks[source_indexes[0]].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
+        # Delayer connects to Wire (Delayer's own TipoLocal "2", output point "1")
+        build.blocks[source_indexes[0]].connections.append([
+            TIPOLOCAL_DELAYER, DELAYER_POINT_OUTPUT, to_rtg_index(wire_index)
+        ])
+        # Splitter_3 connects to Wire (Splitter_3's own TipoLocal "3", template point)
+        build.blocks[endpoint.block_index].connections.append([
+            TIPOLOCAL_SPLITTER, endpoint.point_id, to_rtg_index(wire_index)
+        ])
         return [wire_index]
 
     def resolve(node: int) -> int:
@@ -281,18 +291,28 @@ def _connect_pixel_sources(
             left_index, DELAYER_POINT_OUTPUT,
             gate_index, GATE_OR_POINT_INPUT_A,
         )
-        build.blocks[left_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
-        # Gate-OR connects to this Wire (Wire's TipoLocal "3", Gate-OR point "2" = InputA)
-        build.blocks[gate_index].connections.append(["3", GATE_OR_POINT_INPUT_A, to_rtg_index(wire_index)])
+        # Delayer connects to Wire (Delayer's own TipoLocal "2", output point "1")
+        build.blocks[left_index].connections.append([
+            TIPOLOCAL_DELAYER, DELAYER_POINT_OUTPUT, to_rtg_index(wire_index)
+        ])
+        # Gate-OR connects to Wire (Gate-OR's own TipoLocal "4", InputA point "2")
+        build.blocks[gate_index].connections.append([
+            TIPOLOCAL_GATE_OR, GATE_OR_POINT_INPUT_A, to_rtg_index(wire_index)
+        ])
         # Right source -> Wire -> Gate-OR InputB
         wire_index = _wire_between(
             build,
             right_index, DELAYER_POINT_OUTPUT,
             gate_index, GATE_OR_POINT_INPUT_B,
         )
-        build.blocks[right_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
-        # Gate-OR connects to this Wire (Wire's TipoLocal "3", Gate-OR point "3" = InputB)
-        build.blocks[gate_index].connections.append(["3", GATE_OR_POINT_INPUT_B, to_rtg_index(wire_index)])
+        # Delayer connects to Wire (Delayer's own TipoLocal "2", output point "1")
+        build.blocks[right_index].connections.append([
+            TIPOLOCAL_DELAYER, DELAYER_POINT_OUTPUT, to_rtg_index(wire_index)
+        ])
+        # Gate-OR connects to Wire (Gate-OR's own TipoLocal "4", InputB point "3")
+        build.blocks[gate_index].connections.append([
+            TIPOLOCAL_GATE_OR, GATE_OR_POINT_INPUT_B, to_rtg_index(wire_index)
+        ])
         return gate_index
 
     root_index = resolve(len(or_tree) - 1)
@@ -302,7 +322,14 @@ def _connect_pixel_sources(
         root_index, GATE_OR_POINT_OUTPUT,
         endpoint.block_index, endpoint.point_id,
     )
-    build.blocks[root_index].connections.append(["3", WIRE_POINT_LEFT, to_rtg_index(wire_index)])
+    # Gate-OR connects to Wire (Gate-OR's own TipoLocal "4", Output point "1")
+    build.blocks[root_index].connections.append([
+        TIPOLOCAL_GATE_OR, GATE_OR_POINT_OUTPUT, to_rtg_index(wire_index)
+    ])
+    # Splitter_3 connects to Wire (Splitter_3's own TipoLocal "3", template point)
+    build.blocks[endpoint.block_index].connections.append([
+        TIPOLOCAL_SPLITTER, endpoint.point_id, to_rtg_index(wire_index)
+    ])
     return []
 
 

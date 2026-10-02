@@ -7,7 +7,7 @@ from typing import Optional
 
 def encode_latest_display(
 	display_path: Optional[Path] = None,
-	output_path: Path = Path("output") / "base64.json",
+	output_path: Path = Path("output") / "base64.txt",
 ) -> str:
 	"""Read the latest display JSON, encode it, and save the Base64 text."""
 	source_path = Path(display_path) if display_path is not None else Path("output") / "display.json"

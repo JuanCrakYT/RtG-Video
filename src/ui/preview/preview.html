@@ -4,39 +4,203 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>RtG Preview</title>
+    <title>RtG Video Preview</title>
+    <link rel="stylesheet" href="/plyr/plyr.css">
     <style>
+        :root {
+            --rtg-bg: #f5f5f5;
+            --rtg-text: #212121;
+            --rtg-canvas-bg: #111111;
+            --rtg-accent: #1976d2;
+            --rtg-accent-hover: #1565c0;
+            --rtg-border: #d0d0d0;
+            --rtg-control-bg: #e0e0e0;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            background: #f5f5f5;
-            color: #212121;
-            font-family: "Segoe UI", sans-serif;
+            background: var(--rtg-bg);
+            color: var(--rtg-text);
+            font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
             margin: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         #source {
-            display: none;
+            width: 100%;
         }
 
-        #status {
-            margin: 16px;
+        .rtg-preview-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px;
+            gap: 12px;
+            max-width: 560px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .rtg-preview-header {
             text-align: center;
+            width: 100%;
+        }
+
+        .rtg-preview-title {
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--rtg-text);
+        }
+
+        .rtg-canvas-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 420px;
+            aspect-ratio: 1 / 1;
+            background: var(--rtg-canvas-bg);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        #rtg-preview-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        .rtg-frame-counter {
+            text-align: center;
+            font-family: "Segoe UI", monospace;
+            font-size: 13px;
+            color: var(--rtg-text);
+            min-height: 20px;
+        }
+
+        .rtg-player-wrapper {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .rtg-status {
+            text-align: center;
+            padding: 16px;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .rtg-status.error {
+            color: #d32f2f;
+        }
+
+        @media (max-width: 480px) {
+            .rtg-preview-container {
+                padding: 12px;
+            }
+
+            .rtg-canvas-wrapper {
+                max-width: 100%;
+            }
+
+            .rtg-player-wrapper {
+                max-width: 100%;
+            }
+        }
+
+        .plyr--video .plyr__controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-top: 1px solid var(--rtg-border);
+        }
+
+        .plyr--video .plyr__control {
+            color: var(--rtg-text);
+        }
+
+        .plyr--video .plyr__control:hover {
+            background: var(--rtg-border);
+        }
+
+        .plyr--video .plyr__control--pressed {
+            color: var(--rtg-accent);
+        }
+
+        .plyr--video .plyr__progress__buffer {
+            background: var(--rtg-border);
+        }
+
+        .plyr--video .plyr__progress__played {
+            background: var(--rtg-accent);
+        }
+
+        .plyr--video .plyr__menu__container {
+            background: white;
+            border: 1px solid var(--rtg-border);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .plyr--video .plyr__menu__value {
+            color: var(--rtg-accent);
+        }
+
+        .plyr--video input[type="range"]::-webkit-slider-thumb {
+            background: var(--rtg-accent);
+        }
+
+        .plyr--video input[type="range"]::-moz-range-thumb {
+            background: var(--rtg-accent);
+        }
+
+        .plyr--video .plyr__tooltip {
+            background: var(--rtg-text);
+            color: white;
+        }
+
+        .plyr--video .plyr__tooltip::before {
+            border-top-color: var(--rtg-text);
         }
     </style>
 </head>
 
 <body>
-    <video id="source" controls preload="auto"></video>
-    <p id="status" role="status">Loading preview...</p>
+    <video id="source" playsinline preload="auto" crossorigin="anonymous"></video>
+
+    <div class="rtg-preview-container">
+        <div class="rtg-preview-header">
+            <div class="rtg-preview-title" id="preview-title">RtG Video Preview</div>
+        </div>
+
+        <div class="rtg-canvas-wrapper">
+            <canvas id="rtg-preview-canvas" width="420" height="420"></canvas>
+        </div>
+
+        <div class="rtg-frame-counter" id="frame-counter" role="status" aria-live="polite">
+            Frame: 0 / ?
+        </div>
+
+        <div class="rtg-player-wrapper">
+            <div id="plyr-target" data-plyr-provider="html5" data-plyr-config='{"controls":["play-large","play","progress","current-time","mute","volume","settings","pip","fullscreen"],"settings":["speed"],"speed":{"options":[0.25,0.5,1,1.5,2,4]},"tooltips":{"controls":true,"seek":true},"keyboard":{"focused":true,"global":false},"hideControls":true,"resetOnEnd":false,"iconUrl":"/plyr/plyr.svg","loadSprite":true}'></div>
+        </div>
+
+        <div class="rtg-status" id="status" role="status" aria-live="polite">Loading preview...</div>
+    </div>
+
     <script type="module">
         import { PreviewController } from "./preview.js";
 
         const query = new URLSearchParams(window.location.search);
         const source = document.querySelector("#source");
         const status = document.querySelector("#status");
-        source.playsInline = true;
-        source.autoplay = true;
-        const token = query.get("video")?.split("/").pop();
+        const previewTitle = document.querySelector("#preview-title");
+        const frameCounter = document.querySelector("#frame-counter");
+        const canvas = document.querySelector("#rtg-preview-canvas");
+        const plyrTarget = document.querySelector("#plyr-target");
         let controller = null;
+        let plyrInstance = null;
         let closing = false;
 
         function parsePalette() {
@@ -48,16 +212,22 @@
         }
 
         function releaseVideo() {
-            if (token) navigator.sendBeacon(`/release/${encodeURIComponent(token)}`, "");
+            if (query.get("video")) {
+                const token = query.get("video").split("/").pop();
+                if (token) navigator.sendBeacon(`/release/${encodeURIComponent(token)}`, "");
+            }
         }
 
         function sendPreviewData(data) {
             window.dispatchEvent(new CustomEvent("preview-data", { detail: data }));
             document.body.dataset.previewData = JSON.stringify(data);
-            if (token) navigator.sendBeacon(
-                `/event/${encodeURIComponent(token)}`,
-                new Blob([JSON.stringify(data)], { type: "application/json" }),
-            );
+            if (query.get("video")) {
+                const token = query.get("video").split("/").pop();
+                if (token) navigator.sendBeacon(
+                    `/event/${encodeURIComponent(token)}`,
+                    new Blob([JSON.stringify(data)], { type: "application/json" }),
+                );
+            }
         }
 
         function sendPreviewClose() {
@@ -66,47 +236,102 @@
             const data = { type: "close" };
             window.dispatchEvent(new CustomEvent("preview-close", { detail: data }));
             document.body.dataset.previewClosed = "true";
-            if (token) navigator.sendBeacon(
-                `/event/${encodeURIComponent(token)}`,
-                new Blob([JSON.stringify(data)], { type: "application/json" }),
-            );
+            if (query.get("video")) {
+                const token = query.get("video").split("/").pop();
+                if (token) navigator.sendBeacon(
+                    `/event/${encodeURIComponent(token)}`,
+                    new Blob([JSON.stringify(data)], { type: "application/json" }),
+                );
+            }
             releaseVideo();
         }
 
         function showError(error) {
             status.textContent = `Preview error: ${error.message || error}`;
+            status.classList.add("error");
+        }
+
+        function updateFrameCounter(current, total) {
+            frameCounter.textContent = `Frame: ${current} / ${total ?? "?"}`;
         }
 
         async function start() {
             if (!query.get("video")) throw new Error("No video was supplied");
             source.src = query.get("video");
-            source.dataset.name = query.get("name") || "video";
-            source.dataset.fps = query.get("fps") || "";
+            const name = query.get("name") || "video";
+            const fps = query.get("fps") || "";
+            const frameCount = query.get("frame_count") ? Number(query.get("frame_count")) : null;
+            const width = Number(query.get("width"));
+            const height = Number(query.get("height"));
+            const palette = parsePalette();
+
+            source.dataset.name = name;
+            source.dataset.fps = fps;
+
+            previewTitle.textContent = `RtG Video Preview - ${name}`;
+
             await new Promise((resolve, reject) => {
                 source.addEventListener("loadedmetadata", resolve, { once: true });
                 source.addEventListener("error", () => reject(new Error("The selected video could not be loaded")), { once: true });
             });
+
+            // Move the video element into Plyr's target container
+            plyrTarget.appendChild(source);
+
+            // Initialize Plyr
+            const { default: Plyr } = await import("/plyr/plyr.js");
+            plyrInstance = new Plyr(source, {
+                controls: ["play-large", "play", "progress", "current-time", "mute", "volume", "settings", "pip", "fullscreen"],
+                settings: ["speed"],
+                speed: { options: [0.25, 0.5, 1, 1.5, 2, 4] },
+                tooltips: { controls: true, seek: true },
+                keyboard: { focused: true, global: false },
+                hideControls: true,
+                resetOnEnd: false,
+                iconUrl: "/plyr/plyr.svg",
+                loadSprite: true,
+            });
+
+            // Initialize our RtG PreviewController
             controller = new PreviewController({
                 video: source,
-                width: Number(query.get("width")),
-                height: Number(query.get("height")),
-                frameCount: Number(query.get("frame_count")),
-                palette: parsePalette(),
-                popup: false,
+                plyr: plyrInstance,
+                canvas,
+                width,
+                height,
+                frameCount,
+                palette,
                 onError: showError,
                 onData: sendPreviewData,
                 onClose: sendPreviewClose,
+                onFrameUpdate: updateFrameCounter,
             });
+
             window.previewController = controller;
-            controller.open();
+            window.plyrInstance = plyrInstance;
+
+            // Set up Plyr event listeners to sync with our controller
+            plyrInstance.on("play", () => controller.onPlyrPlay());
+            plyrInstance.on("pause", () => controller.onPlyrPause());
+            plyrInstance.on("seeked", () => controller.onPlyrSeeked());
+            plyrInstance.on("timeupdate", () => controller.onPlyrTimeUpdate());
+            plyrInstance.on("ended", () => controller.onPlyrEnded());
+            plyrInstance.on("ratechange", () => controller.onPlyrRateChange());
+            plyrInstance.on("volumechange", () => controller.onPlyrVolumeChange());
+            plyrInstance.on("enterfullscreen", () => controller.onPlyrFullscreenChange(true));
+            plyrInstance.on("exitfullscreen", () => controller.onPlyrFullscreenChange(false));
+
+            controller.initialize();
             document.body.dataset.previewStarted = "true";
-            status.textContent = "Preview playing. Use the controls in the preview window.";
+            status.textContent = "Preview ready. Use the player controls below.";
+
             window.addEventListener("preview-close", () => window.close(), { once: true });
         }
 
         window.addEventListener("beforeunload", () => {
-            if (!closing) controller?.close();
+            if (!closing) controller?.destroy();
         }, { once: true });
+
         start().catch(showError);
     </script>
 </body>

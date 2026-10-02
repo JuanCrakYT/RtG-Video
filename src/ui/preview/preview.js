@@ -123,228 +123,302 @@ export function processVideoFrame(video, sourceCanvas, sourceContext, width, hei
 }
 
 export class PreviewController {
-    constructor({ video, width, height, frameCount = null, palette = DEFAULT_PALETTE, windowTarget = window, popup = true, onClose = null, onData = null, onError = null }) {
+    constructor({ video, plyr, canvas, width, height, frameCount = null, palette = DEFAULT_PALETTE, onError = null, onData = null, onClose = null, onFrameUpdate = null }) {
         this.video = video;
+        this.plyr = plyr;
+        this.canvas = canvas;
         this.width = clampDimension(width);
         this.height = clampDimension(height);
         this.palette = normalizePalette(palette);
         this.frameCount = frameCount;
-        this.windowTarget = windowTarget;
-        this.popup = popup;
-        this.onClose = onClose;
-        this.onData = onData;
         this.onError = onError;
-        this.previewWindow = null;
-        this.ownsPreviewWindow = false;
-        this.animationFrame = null;
+        this.onData = onData;
+        this.onClose = onClose;
+        this.onFrameUpdate = onFrameUpdate;
+
+        this.context = canvas.getContext("2d");
         this.sourceCanvas = null;
         this.sourceContext = null;
-        this.previewCanvas = null;
-        this.previewContext = null;
-        this.previewCounter = null;
-        this.toggleSound = null;
+        this.animationFrame = null;
+        this.callbackMode = null;
         this.frameNumber = 0;
         this.totalFrames = null;
         this.lastMediaTime = null;
         this.isPlaying = false;
-        this.callbackMode = null;
-        this.handleVideoError = () => {
-            const error = new Error("The selected video could not be decoded");
-            this.onError?.(error);
-            this.close();
-        };
+        this.isInitialized = false;
+        this.wasPlayingBeforeSeek = false;
+        this.toggleSound = null;
+        this._boundHandleVideoError = this._handleVideoError.bind(this);
+
+        this._initAudio();
     }
 
-    open() {
-        if (!this.video || this.video.readyState < 1) throw new Error("Load a video before opening the preview");
-        this.close(false);
-        this.previewWindow = this.popup ? this.windowTarget.open("", "rtg-preview", "width=560,height=520,resizable=no") : this.windowTarget;
-        this.ownsPreviewWindow = this.popup;
-        if (!this.previewWindow) throw new Error("The preview window was blocked by the browser");
-        const document = this.previewWindow.document;
-        if (this.popup) document.body.replaceChildren();
-        document.title = `RtG Video Preview - ${this.video.dataset.name || "video"}`;
-        document.body.style.margin = "0";
-        document.body.style.background = "#f5f5f5";
-        document.body.style.fontFamily = "Segoe UI, sans-serif";
-        const canvas = document.createElement("canvas");
-        canvas.width = 420;
-        canvas.height = 420;
-        canvas.style.display = "block";
-        canvas.style.margin = "12px auto 8px";
-        canvas.style.background = "#111111";
-        document.body.appendChild(canvas);
-        this.previewCanvas = canvas;
-        this.previewContext = canvas.getContext("2d");
+    _initAudio() {
+        if (typeof window === "undefined" || typeof window.Audio !== "function") {
+            this.toggleSound = null;
+            return;
+        }
+        this.toggleSound = new window.Audio("/asset/notification.mp3");
+    }
+
+    _handleVideoError() {
+        const error = new Error("The selected video could not be decoded");
+        this.onError?.(error);
+        this.destroy();
+    }
+
+    initialize() {
+        if (this.isInitialized) return;
+
+        if (!this.video || this.video.readyState < 1) throw new Error("Load a video before initializing the preview");
+
         this.sourceCanvas = document.createElement("canvas");
+        this.sourceContext = this.sourceCanvas.getContext("2d", { willReadFrequently: true });
         this.sourceCanvas.width = this.video.videoWidth;
         this.sourceCanvas.height = this.video.videoHeight;
-        this.sourceContext = this.sourceCanvas.getContext("2d", { willReadFrequently: true });
-        const info = document.createElement("div");
-        info.textContent = `RtG preview: ${this.width} x ${this.height} pixels`;
-        info.style.textAlign = "center";
-        info.style.fontWeight = "bold";
-        document.body.appendChild(info);
-        this.previewCounter = document.createElement("div");
-        this.previewCounter.style.textAlign = "center";
-        document.body.appendChild(this.previewCounter);
-        const controls = document.createElement("div");
-        controls.style.textAlign = "center";
-        controls.style.margin = "12px";
-        const AudioConstructor = this.previewWindow.Audio || this.windowTarget.Audio;
-        this.toggleSound = typeof AudioConstructor === "function"
-            ? new AudioConstructor("/asset/notification.mp3") : null;
-        const toggle = document.createElement("button");
-        toggle.textContent = "Pause";
-        toggle.onclick = () => this.togglePause(toggle);
-        controls.appendChild(toggle);
-        const close = document.createElement("button");
-        close.textContent = "Close";
-        close.onclick = () => this.close();
-        controls.appendChild(close);
-        document.body.appendChild(controls);
+
         const suppliedFrameCount = Number(this.frameCount);
-        const videoFrameRate = Number(this.video.dataset.fps);
+        const videoFrameRate = Number(this.video.dataset?.fps);
         this.totalFrames = Number.isFinite(suppliedFrameCount) && suppliedFrameCount > 0
             ? Math.trunc(suppliedFrameCount)
             : Number.isFinite(this.video.duration) && this.video.duration > 0 && Number.isFinite(videoFrameRate) && videoFrameRate > 0
                 ? Math.round(this.video.duration * videoFrameRate) : null;
+
+        this.video.addEventListener("error", this._boundHandleVideoError, { once: true });
+        this.video.loop = true;
+
         this.onData?.({
             Width: this.width,
             Height: this.height,
             "Frame-Count": this.totalFrames,
         });
-        this.video.addEventListener("error", this.handleVideoError, { once: true });
-        this.video.currentTime = 0;
-        this.video.loop = true;
+
+        this.isInitialized = true;
+        this.isPlaying = !this.video.paused;
+
+        if (this.isPlaying) {
+            this._startRenderLoop();
+        } else {
+            this._renderCurrentFrame();
+        }
+    }
+
+    play() {
+        if (!this.isInitialized) return;
         this.isPlaying = true;
         this.video.play().catch((error) => {
             this.isPlaying = false;
-            this.cancelScheduledFrame();
+            this._stopRenderLoop();
             this.onError?.(error);
         });
-        this.drawFrame();
-        document.addEventListener("keydown", (e) => this._onKeyDown(e));
+        if (this.animationFrame === null) this._startRenderLoop();
     }
 
-    _onKeyDown(event) {
-        const tag = (event.target.tagName || "").toLowerCase();
-        if (tag === "input" || tag === "textarea" || tag === "select") return;
-        const isCtrl = event.ctrlKey || event.metaKey;
-        if (isCtrl && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-            if (this.totalFrames <= 0) return;
-            const wasPlaying = this.isPlaying;
-            if (wasPlaying) {
-                this.isPlaying = false;
-                this.video.pause();
-                this.cancelScheduledFrame();
-            }
-            const delta = event.key === "ArrowRight" ? 1 : -1;
-            const newFrame = Math.max(0, Math.min(this.frameNumber + delta, this.totalFrames - 1));
-            if (newFrame !== this.frameNumber) {
-                this.seekToFrame(newFrame);
-            }
-            return;
-        }
-        let delta = 0;
-        if (event.key === "ArrowLeft") delta = event.shiftKey ? -5 : -10;
-        else if (event.key === "ArrowRight") delta = event.shiftKey ? 5 : 10;
-        else return;
-        event.preventDefault();
+    pause() {
+        if (!this.isInitialized) return;
+        this.isPlaying = false;
+        this._stopRenderLoop();
+        this.video.pause();
+    }
+
+    stop() {
+        this.pause();
+        this.video.currentTime = 0;
+        this.frameNumber = 0;
+        this._renderCurrentFrame();
+    }
+
+    reset() {
+        this.stop();
+    }
+
+    seek(time) {
+        if (!this.isInitialized) return;
         const duration = this.video.duration || 0;
-        const newTime = Math.max(0, Math.min(this.video.currentTime + delta, duration));
-        const wasPlaying = this.isPlaying;
-        this.cancelScheduledFrame();
-        this.video.currentTime = newTime;
-        this._renderCurrentFrame();
-        if (wasPlaying) {
-            this.video.play().catch(() => { });
-            if (this.animationFrame === null) this.drawFrame();
-        }
-    }
-
-    seekToFrame(frameIndex) {
-        if (!this.video.duration || this.totalFrames <= 0) return;
-        const newTime = (frameIndex / this.totalFrames) * this.video.duration;
-        this.video.currentTime = newTime;
-        this.frameNumber = frameIndex;
-        this._renderCurrentFrame();
-    }
-
-    togglePause(toggleButton) {
-        if (!this.previewWindow || (this.ownsPreviewWindow && this.previewWindow.closed)) return;
-        if (this.toggleSound) {
-            this.toggleSound.currentTime = 0;
-            this.toggleSound.play().catch(() => { });
-        }
-        this.isPlaying = !this.isPlaying;
+        const newTime = Math.max(0, Math.min(time, duration));
+        this.wasPlayingBeforeSeek = this.isPlaying;
         if (this.isPlaying) {
-            this.video.play().catch((error) => {
-                this.isPlaying = false;
-                this.cancelScheduledFrame();
-                this.onError?.(error);
-            });
-            if (this.animationFrame === null) this.drawFrame();
-            toggleButton.textContent = "Pause";
-        } else {
-            this.cancelScheduledFrame();
-            this.video.pause();
-            toggleButton.textContent = "Play";
+            this.pause();
         }
-    }
-
-    cancelScheduledFrame() {
-        if (this.animationFrame === null) return;
-        if (this.callbackMode === "requestVideoFrameCallback" && this.video.cancelVideoFrameCallback) this.video.cancelVideoFrameCallback(this.animationFrame);
-        if (this.callbackMode === "requestAnimationFrame") this.windowTarget.cancelAnimationFrame(this.animationFrame);
-        this.animationFrame = null;
-    }
-
-    drawFrame(metadata = null) {
-        if (!this.previewWindow || (this.ownsPreviewWindow && this.previewWindow.closed)) return this.close();
-        if (!this.previewCanvas || !this.isPlaying) return;
-        this.animationFrame = null;
+        this.video.currentTime = newTime;
         this._renderCurrentFrame();
-        if (typeof this.video.requestVideoFrameCallback === "function") {
-            this.callbackMode = "requestVideoFrameCallback";
-            this.animationFrame = this.video.requestVideoFrameCallback((_, nextMetadata) => this.drawFrame(nextMetadata));
-        } else {
-            this.callbackMode = "requestAnimationFrame";
-            this.animationFrame = this.windowTarget.requestAnimationFrame(() => this.drawFrame());
+        if (this.wasPlayingBeforeSeek) {
+            this.play();
         }
     }
 
-    _renderCurrentFrame(metadata = null) {
-        const mediaTime = Number.isFinite(metadata?.mediaTime) ? metadata.mediaTime : this.video.currentTime;
-        const frameRate = Number(this.video.dataset.fps);
-        if (Number.isFinite(mediaTime) && mediaTime >= 0 && Number.isFinite(frameRate) && frameRate > 0) {
-            this.frameNumber = this.totalFrames
-                ? Math.floor(mediaTime * frameRate) % this.totalFrames
-                : Math.floor(mediaTime * frameRate);
-        } else if (!this.video.paused) {
-            this.frameNumber = this.totalFrames ? (this.frameNumber + 1) % this.totalFrames : this.frameNumber + 1;
-        }
-        this.lastMediaTime = mediaTime;
-        const processed = processVideoFrame(this.video, this.sourceCanvas, this.sourceContext, this.width, this.height, this.palette);
-        this.previewContext.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
-        renderQuantizedGrid(this.previewContext, processed.quantized, this.width, this.height);
-        this.previewCounter.textContent = `Frame: ${this.frameNumber} / ${this.totalFrames ?? "?"}`;
+    seekFrame(frameIndex) {
+        if (!this.isInitialized || !this.video.duration || this.totalFrames <= 0) return;
+        const newTime = (frameIndex / this.totalFrames) * this.video.duration;
+        this.seek(newTime);
     }
 
-    close(notify = true) {
-        this.cancelScheduledFrame();
+    nextFrame() {
+        if (!this.isInitialized || this.totalFrames <= 0) return;
+        const next = Math.min(this.frameNumber + 1, this.totalFrames - 1);
+        this.seekFrame(next);
+    }
+
+    previousFrame() {
+        if (!this.isInitialized || this.totalFrames <= 0) return;
+        const prev = Math.max(this.frameNumber - 1, 0);
+        this.seekFrame(prev);
+    }
+
+    setFPS(fps) {
+        if (!this.isInitialized) return;
+        this.video.dataset.fps = String(fps);
+        const newTotalFrames = Number.isFinite(this.video.duration) && this.video.duration > 0 && fps > 0
+            ? Math.round(this.video.duration * fps) : null;
+        if (newTotalFrames !== null) {
+            this.totalFrames = newTotalFrames;
+            this.onData?.({
+                Width: this.width,
+                Height: this.height,
+                "Frame-Count": this.totalFrames,
+            });
+        }
+    }
+
+    getCurrentFrame() {
+        return this.frameNumber;
+    }
+
+    getTotalFrames() {
+        return this.totalFrames;
+    }
+
+    setSource(src) {
+        if (!this.isInitialized) return;
+        this.video.src = src;
+        this.video.load();
+    }
+
+    destroy() {
+        this._stopRenderLoop();
         this.video?.pause();
-        this.video?.removeEventListener("error", this.handleVideoError);
-        if (this.ownsPreviewWindow && this.previewWindow && !this.previewWindow.closed) this.previewWindow.close();
-        this.previewWindow = null;
-        this.previewCanvas = null;
-        this.previewContext = null;
-        this.previewCounter = null;
+        this.video?.removeEventListener("error", this._boundHandleVideoError);
         this.toggleSound = null;
         this.sourceCanvas = null;
         this.sourceContext = null;
         this.lastMediaTime = null;
         this.isPlaying = false;
-        if (notify) this.onClose?.();
+        this.isInitialized = false;
+        this.onClose?.();
+    }
+
+    onPlyrPlay() {
+        if (!this.isInitialized) return;
+        this.isPlaying = true;
+        if (this.animationFrame === null) this._startRenderLoop();
+    }
+
+    onPlyrPause() {
+        if (!this.isInitialized) return;
+        this.isPlaying = false;
+        this._stopRenderLoop();
+    }
+
+    onPlyrSeeked() {
+        if (!this.isInitialized) return;
+        this._renderCurrentFrame();
+        if (this.wasPlayingBeforeSeek && !this.isPlaying) {
+            this.play();
+        }
+        this.wasPlayingBeforeSeek = false;
+    }
+
+    onPlyrTimeUpdate() {
+        if (!this.isInitialized || !this.isPlaying) return;
+        this._renderCurrentFrame();
+    }
+
+    onPlyrEnded() {
+        if (!this.isInitialized) return;
+        this.isPlaying = false;
+        this._stopRenderLoop();
+        this.video.currentTime = 0;
+        this.frameNumber = 0;
+        this._renderCurrentFrame();
+    }
+
+    onPlyrRateChange() {
+        // Playback rate changed, frame timing will adjust automatically via timeupdate
+    }
+
+    onPlyrVolumeChange() {
+        // Volume/mute changed - handled by Plyr UI
+    }
+
+    onPlyrFullscreenChange(isFullscreen) {
+        // Fullscreen state changed - canvas rendering continues
+    }
+
+    _startRenderLoop() {
+        if (this.animationFrame !== null) return;
+        this._scheduleNextFrame();
+    }
+
+    _stopRenderLoop() {
+        if (this.animationFrame === null) return;
+        if (this.callbackMode === "requestVideoFrameCallback" && this.video.cancelVideoFrameCallback) {
+            this.video.cancelVideoFrameCallback(this.animationFrame);
+        } else if (this.callbackMode === "requestAnimationFrame") {
+            cancelAnimationFrame(this.animationFrame);
+        }
+        this.animationFrame = null;
+        this.callbackMode = null;
+    }
+
+    _scheduleNextFrame() {
+        if (typeof this.video.requestVideoFrameCallback === "function") {
+            this.callbackMode = "requestVideoFrameCallback";
+            this.animationFrame = this.video.requestVideoFrameCallback((_, metadata) => this._onVideoFrame(metadata));
+        } else {
+            this.callbackMode = "requestAnimationFrame";
+            this.animationFrame = requestAnimationFrame(() => this._onVideoFrame(null));
+        }
+    }
+
+    _onVideoFrame(metadata) {
+        this.animationFrame = null;
+        if (!this.isPlaying || !this.isInitialized) return;
+        this._renderCurrentFrame(metadata);
+        this._scheduleNextFrame();
+    }
+
+    _renderCurrentFrame(metadata = null) {
+        if (!this.canvas || !this.context || !this.sourceContext) return;
+
+        const mediaTime = Number.isFinite(metadata?.mediaTime) ? metadata.mediaTime : this.video.currentTime;
+        const frameRate = Number(this.video.dataset?.fps);
+
+        if (Number.isFinite(mediaTime) && mediaTime >= 0 && Number.isFinite(frameRate) && frameRate > 0) {
+            this.frameNumber = this.totalFrames
+                ? Math.floor(mediaTime * frameRate) % this.totalFrames
+                : Math.floor(mediaTime * frameRate);
+        } else if (!this.video.paused && this.isPlaying) {
+            this.frameNumber = this.totalFrames ? (this.frameNumber + 1) % this.totalFrames : this.frameNumber + 1;
+        }
+
+        this.lastMediaTime = mediaTime;
+
+        const processed = processVideoFrame(this.video, this.sourceCanvas, this.sourceContext, this.width, this.height, this.palette);
+
+        this.context.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        renderQuantizedGrid(this.context, processed.quantized, this.width, this.height);
+
+        this.onFrameUpdate?.(this.frameNumber, this.totalFrames);
     }
 }
+
+export const PreviewAPI = {
+    create: (options) => new PreviewController(options),
+    clampDimension,
+    normalizePalette,
+    quantizeImageData,
+    quantizeImageDataFlat,
+    resizeImageDataArea,
+    renderQuantizedGrid,
+    processVideoFrame,
+};

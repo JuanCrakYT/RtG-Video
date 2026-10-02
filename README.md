@@ -81,7 +81,7 @@ RtG Video/
 │  │  ├─ animation.json
 │  │  ├─ display.json
 │  │  └─ info.json
-│  ├─ base64.json
+│  ├─ base64.txt
 │  └─ display.json
 │
 ├─ screenshots/

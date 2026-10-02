@@ -1698,7 +1698,7 @@ class RtGDisplayGUI:
             self.root.clipboard_clear()
             self.root.clipboard_append(encoded_json)
             self._play_sound("notification.mp3")
-            self._showinfo("Copied", "Base64 saved to output/base64.json and copied to clipboard!")
+            self._showinfo("Copied", "Base64 saved to output/base64.txt and copied to clipboard!")
         except Exception as error:
             self._showerror("Base64 failed", str(error))
     

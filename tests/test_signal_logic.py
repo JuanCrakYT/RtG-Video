@@ -51,15 +51,14 @@ def test_start_button_uses_base_physical_and_output_connections():
     assert button.properties == {"RGB": [255, 0, 0]}
     assert button.connections == [["3", "4", 1], ["3", "2", 1]]
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
-    # First Delayer connects to Button (TipoLocal "1")
-    assert build.blocks[delayer_indexes[0]].connections == [["1", "1", button_index + 1]]
-    # Second Delayer connects to Wire0 (TipoLocal "3") at point 4 (Right)
-    # Wire0 is created after all Delayers, so its index = len(build.blocks) before wire creation
-    wire0_index = delayer_indexes[-1] + 1  # First wire after all Delayers
-    assert build.blocks[delayer_indexes[1]].connections == [["3", "4", wire0_index + 1]]
-    # Third Delayer connects to Wire1 (TipoLocal "3") at point 4 (Right)
+    # First Delayer connects to Button using Delayer's TipoLocal "2" and Wire input point "4"
+    assert build.blocks[delayer_indexes[0]].connections == [["2", "4", button_index + 1]]
+    # Second Delayer connects to Wire0 using Delayer's TipoLocal "2" and Wire input point "4"
+    wire0_index = delayer_indexes[-1] + 1
+    assert build.blocks[delayer_indexes[1]].connections == [["2", "4", wire0_index + 1]]
+    # Third Delayer connects to Wire1 using Delayer's TipoLocal "2" and Wire input point "4"
     wire1_index = wire0_index + 1
-    assert build.blocks[delayer_indexes[2]].connections == [["3", "4", wire1_index + 1]]
+    assert build.blocks[delayer_indexes[2]].connections == [["2", "4", wire1_index + 1]]
 
     wires = [block for block in build.blocks if block.block_type == "Wire"]
     # For 3 frames: 2 inter-Delayer Wires (N-1)

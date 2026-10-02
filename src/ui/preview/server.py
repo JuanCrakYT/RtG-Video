@@ -46,6 +46,14 @@ class PreviewServer:
                     self._video_path = video
                     self._send_video(video)
                     return
+                if path.startswith("/plyr/"):
+                    plyr_path = owner.root / "plyr" / path.removeprefix("/plyr/")
+                    if plyr_path.is_file():
+                        self.path = path
+                        super().do_GET()
+                        return
+                    self.send_error(404)
+                    return
                 super().do_GET()
 
             def do_POST(self):
