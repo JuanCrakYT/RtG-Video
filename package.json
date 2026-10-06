@@ -8,6 +8,6 @@
         "test:preview": "npm --prefix tests/js test"
     },
     "devDependencies": {
-        "electron": "^38.1.0"
+        "electron": "^22.3.27"
     }
 }

@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import webbrowser
 
 from src.video.processing import DEFAULT_PALETTE, normalize_palette, quantize_frame
 from src.ui.base64 import encode_latest_display
@@ -1233,6 +1234,13 @@ class RtGDisplayGUI:
             )
         if self.preview_process is None:
             self.preview_token = None
+            # Clean up temp dir if it exists
+            if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
+                try:
+                    shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                self._preview_temp_dir = None
             return
         if self.preview_process.poll() is None:
             if os.name == "nt":
@@ -1249,9 +1257,17 @@ class RtGDisplayGUI:
                     self.preview_process.kill()
         self.preview_process = None
         self.preview_token = None
+        # Clean up temp dir
+        if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
+            try:
+                shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
+            except Exception:
+                pass
+            self._preview_temp_dir = None
 
     def _open_javascript_preview(self, video_path: Path):
-        """Open the production JavaScript Preview in an independent Electron window."""
+        """Open the production JavaScript Preview in an independent Electron window.
+        Falls back to system default browser if Electron fails to start."""
         self._close_javascript_preview()
         if self.preview_server is None:
             self.preview_server = PreviewServer()
@@ -1261,25 +1277,195 @@ class RtGDisplayGUI:
         height = max(2, min(128, int(getattr(self, "height_value").get())))
         url = self.preview_server.url(token, width, height, self.palette_colors)
         project_root = Path(__file__).resolve().parents[2]
-        electron_entry = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
+        electron_entry_src = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
         local_electron = project_root / "node_modules" / "electron" / "dist" / "electron.exe"
-        if local_electron.is_file():
-            command = [str(local_electron), str(electron_entry)]
-        else:
+        if not local_electron.is_file():
             npx = shutil.which("npx.cmd") or shutil.which("npx")
             if npx is None:
                 raise RuntimeError("Node.js and Electron are required for the JavaScript Preview")
-            command = [npx, "--no-install", "electron", str(electron_entry)]
+            # Note: npx will have the same module resolution issue, so we still need local electron
+            raise RuntimeError("Local Electron installation not found. Please run 'npm install' in the project root.")
+        
+        # Copy electron_main.cjs to a temporary directory and create a corrected
+        # electron package to avoid the npm 'electron' package shadowing
+        # built-in Electron modules (app, BrowserWindow, etc.)
+        import tempfile
+        temp_dir = Path(tempfile.mkdtemp(prefix="rtg-preview-"))
+        
+        # Create minimal node_modules/electron with corrected index.js
+        npm_electron_dir = temp_dir / "node_modules" / "electron"
+        npm_electron_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Write corrected index.js that provides built-in modules when inside Electron
+        corrected_index = '''const fs = require('fs');
+const path = require('path');
+
+const pathFile = path.join(__dirname, 'path.txt');
+
+function getElectronPath() {
+    let executablePath;
+    if (fs.existsSync(pathFile)) {
+        executablePath = fs.readFileSync(pathFile, 'utf-8');
+    }
+    if (process.env.ELECTRON_OVERRIDE_DIST_PATH) {
+        return path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, executablePath || 'electron');
+    }
+    if (executablePath) {
+        return path.join(__dirname, 'dist', executablePath);
+    } else {
+        throw new Error('Electron failed to install correctly');
+    }
+}
+
+// Detect if running inside Electron main process
+const isElectronMain = process.versions && process.versions.electron && process.type === 'browser';
+
+if (isElectronMain) {
+    // Inside Electron - provide access to built-in modules
+    // The built-in modules are available as core modules in Electron's Node.js
+    // We need to access them through the internal module system
+    const Module = require('module');
+    const originalRequire = Module.prototype.require;
+    
+    Module.prototype.require = function(id) {
+        if (id === 'electron') {
+            // Return a proxy that provides access to Electron's built-in modules
+            // The actual modules are available through process.electronBinding in older versions
+            // or through the internal module system
+            const electronProxy = {
+                get app() {
+                    try { return originalRequire('electron').app; } catch (e) { return null; }
+                },
+                get BrowserWindow() {
+                    try { return originalRequire('electron').BrowserWindow; } catch (e) { return null; }
+                },
+                get ipcMain() {
+                    try { return originalRequire('electron').ipcMain; } catch (e) { return null; }
+                },
+                get dialog() {
+                    try { return originalRequire('electron').dialog; } catch (e) { return null; }
+                },
+                get Menu() {
+                    try { return originalRequire('electron').Menu; } catch (e) { return null; }
+                },
+                get shell() {
+                    try { return originalRequire('electron').shell; } catch (e) { return null; }
+                },
+                get session() {
+                    try { return originalRequire('electron').session; } catch (e) { return null; }
+                },
+                get webContents() {
+                    try { return originalRequire('electron').webContents; } catch (e) { return null; }
+                },
+                get nativeImage() {
+                    try { return originalRequire('electron').nativeImage; } catch (e) { return null; }
+                },
+                get clipboard() {
+                    try { return originalRequire('electron').clipboard; } catch (e) { return null; }
+                },
+                get crashReporter() {
+                    try { return originalRequire('electron').crashReporter; } catch (e) { return null; }
+                },
+                get autoUpdater() {
+                    try { return originalRequire('electron').autoUpdater; } catch (e) { return null; }
+                },
+            };
+            // Restore original require
+            Module.prototype.require = originalRequire;
+            return electronProxy;
+        }
+        return originalRequire.apply(this, arguments);
+    };
+    
+    module.exports = {
+        get app() { return require('electron').app; },
+        get BrowserWindow() { return require('electron').BrowserWindow; },
+        get ipcMain() { return require('electron').ipcMain; },
+        get dialog() { return require('electron').dialog; },
+        get Menu() { return require('electron').Menu; },
+        get shell() { return require('electron').shell; },
+        get session() { return require('electron').session; },
+        get webContents() { return require('electron').webContents; },
+        get nativeImage() { return require('electron').nativeImage; },
+        get clipboard() { return require('electron').clipboard; },
+        get crashReporter() { return require('electron').crashReporter; },
+        get autoUpdater() { return require('electron').autoUpdater; },
+    };
+} else {
+    module.exports = getElectronPath();
+}
+'''
+        with open(npm_electron_dir / "index.js", "w", encoding="utf-8") as f:
+            f.write(corrected_index)
+        
+        # Copy path.txt and dist folder from original electron package
+        project_root = Path(__file__).resolve().parents[2]
+        original_electron = project_root / "node_modules" / "electron"
+        shutil.copy2(original_electron / "path.txt", npm_electron_dir / "path.txt")
+        shutil.copytree(original_electron / "dist", npm_electron_dir / "dist", dirs_exist_ok=True)
+        
+        # Copy electron_main.cjs to temp directory
+        electron_entry = temp_dir / "electron_main.cjs"
+        shutil.copy2(electron_entry_src, electron_entry)
+        
+        # Set up environment with RTG_PREVIEW_URL and icon path
+        project_root = Path(__file__).resolve().parents[2]
+        icon_path = project_root / "assets" / "logo" / "favicon-preview.ico"
         environment = os.environ.copy()
         environment["RTG_PREVIEW_URL"] = url
+        environment["RTG_PREVIEW_ICON"] = str(icon_path)
+        # Set NODE_PATH to include our corrected electron package
+        environment["NODE_PATH"] = str(temp_dir / "node_modules")
+        
+        command = [str(local_electron), str(electron_entry)]
         try:
             self.preview_process = subprocess.Popen(
                 command,
-                cwd=str(project_root),
+                cwd=str(temp_dir),
                 env=environment,
             )
+            # Store temp dir for cleanup
+            self._preview_temp_dir = temp_dir
         except OSError as error:
+            # Clean up temp dir on failure
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception:
+                pass
             raise RuntimeError(f"Could not start Electron: {error}") from error
+
+        # Wait briefly to verify Electron started successfully
+        def check_electron_started():
+            if self.preview_process is None:
+                return
+            # Give Electron a moment to start
+            time.sleep(3)
+            if self.preview_process.poll() is not None:
+                # Electron exited immediately - likely failed to start
+                self.preview_process = None
+                self.preview_token = None
+                # Clean up temp dir
+                try:
+                    if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
+                        shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                # Fallback to system default browser
+                try:
+                    webbrowser.open(url)
+                    self.root.after(0, lambda: self.video_status_label.config(
+                        text="Electron failed - opened in browser",
+                        fg="#FF9800"
+                    ))
+                except Exception:
+                    self.root.after(0, lambda: self.video_status_label.config(
+                        text=f"Electron failed - open manually: {url}",
+                        fg="#F44336"
+                    ))
+
+        import time
+        import threading
+        threading.Thread(target=check_electron_started, daemon=True).start()
 
     def _toggle_preview_pause(self):
         """Toggle pause/play state for the preview loop."""

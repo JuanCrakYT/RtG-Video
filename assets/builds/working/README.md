@@ -1,0 +1,2 @@
+# Working JSONs
+Estos JSONs no fueron generados con código al 100%, sino que se usó una build ya generada y se modificó en el juego para que funcionara correctamente. Por lo tanto, esta build no contiene todos los datos que debería tener una build generada con código de RtG-Video, pero sí contiene los datos necesarios para que funcione correctamente en el juego.

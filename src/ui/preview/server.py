@@ -26,6 +26,23 @@ class PreviewServer:
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, directory=str(owner.root), **kwargs)
 
+            def _send_cors_headers(self):
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+                self.send_header("Access-Control-Allow-Headers", "Content-Type, Range")
+
+            def _send_cors_preflight(self):
+                self.send_response(204)
+                self._send_cors_headers()
+                self.end_headers()
+
+            def do_OPTIONS(self):
+                self._send_cors_preflight()
+
+            def end_headers(self):
+                self._send_cors_headers()
+                super().end_headers()
+
             def do_GET(self):
                 path = unquote(urlparse(self.path).path)
                 if path == "/asset/notification.mp3":
@@ -47,9 +64,19 @@ class PreviewServer:
                     self._send_video(video)
                     return
                 if path.startswith("/plyr/"):
-                    plyr_path = owner.root / "plyr" / path.removeprefix("/plyr/")
+                    plyr_relative = path.removeprefix("/plyr/")
+                    plyr_path = owner.root / "plyr" / plyr_relative
+                    # ES modules in browsers require .js extension in imports
+                    # plyr.js uses bare imports like "./captions" which resolve to "/plyr/captions"
+                    # We need to serve these without extension by adding .js if file exists
+                    if not plyr_path.is_file() and not plyr_path.suffix:
+                        # Try with .js extension
+                        plyr_path_js = plyr_path.with_suffix(".js")
+                        if plyr_path_js.is_file():
+                            plyr_path = plyr_path_js
                     if plyr_path.is_file():
-                        self.path = path
+                        # Must set self.path to the actual file path (with .js) for super().do_GET()
+                        self.path = "/plyr/" + plyr_path.relative_to(owner.root / "plyr").as_posix()
                         super().do_GET()
                         return
                     self.send_error(404)

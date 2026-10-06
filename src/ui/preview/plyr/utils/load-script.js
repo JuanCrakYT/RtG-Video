@@ -2,7 +2,7 @@
 // Load an external script
 // ==========================================================================
 
-import loadjs from 'loadjs';
+import loadjs from './loadjs.js';
 
 export default function loadScript(url) {
   return new Promise((resolve, reject) => {

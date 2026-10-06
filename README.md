@@ -816,3 +816,9 @@ Please keep changes consistent with the existing RtG data model and document any
 ## License
 
 See [`LICENSE`](LICENSE) for the project's license information.
+
+## Credits
+
+- **Project Lead:** [JuanCrakYT](https://github.com/JuanCrakYT)
+- **Plyr:** [Sampotts](https://github.com/sampotts/plyr)
+- **Video Processing:** [OpenCV](https://opencv.org/)

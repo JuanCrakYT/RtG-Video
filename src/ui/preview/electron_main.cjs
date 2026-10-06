@@ -1,4 +1,8 @@
-const { app, BrowserWindow } = require("electron");
+// electron_main.cjs - Electron entry point for RtG Video Preview
+// Uses internal Electron modules directly instead of require("electron")
+
+const electron = require("electron/js2c/asar_bundle");
+const { app, BrowserWindow } = electron;
 const path = require("node:path");
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
@@ -11,19 +15,24 @@ function previewUrl() {
 }
 
 function createPreviewWindow() {
-    const icon = path.join(__dirname, "../../../assets/logo/favicon-preview.ico");
+    const iconPath = process.env.RTG_PREVIEW_ICON 
+        ? path.resolve(process.env.RTG_PREVIEW_ICON)
+        : path.join(__dirname, "../../../assets/logo/favicon-preview.ico");
     const window = new BrowserWindow({
         title: "RtG Video Preview",
         width: 560,
         height: 520,
-        resizable: false,
+        minWidth: 400,
+        minHeight: 400,
+        resizable: true,
         autoHideMenuBar: true,
         backgroundColor: "#f5f5f5",
-        icon,
+        icon: iconPath,
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
-            sandbox: true,
+            sandbox: false,
+            webSecurity: false,
         },
     });
     window.removeMenu();

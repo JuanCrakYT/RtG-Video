@@ -98,6 +98,42 @@
             color: #d32f2f;
         }
 
+        .rtg-error-details {
+            display: none;
+            text-align: left;
+            margin-top: 12px;
+            padding: 12px;
+            background: #f5f5f5;
+            border-radius: 4px;
+            font-family: "Segoe UI", monospace;
+            font-size: 12px;
+            color: #333;
+            max-height: 300px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .rtg-error-details.visible {
+            display: block;
+        }
+
+        .rtg-copy-error-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: var(--rtg-accent);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-family: "Segoe UI", system-ui, sans-serif;
+        }
+
+        .rtg-copy-error-btn:hover {
+            background: var(--rtg-accent-hover);
+        }
+
         @media (max-width: 480px) {
             .rtg-preview-container {
                 padding: 12px;
@@ -187,6 +223,8 @@
         </div>
 
         <div class="rtg-status" id="status" role="status" aria-live="polite">Loading preview...</div>
+        <div class="rtg-error-details" id="error-details"></div>
+        <button class="rtg-copy-error-btn" id="copy-error-btn" style="display: none;">Copy Error Details</button>
     </div>
 
     <script type="module">
@@ -247,8 +285,44 @@
         }
 
         function showError(error) {
+            const errorDetails = document.querySelector("#error-details");
+            const copyBtn = document.querySelector("#copy-error-btn");
+            
             status.textContent = `Preview error: ${error.message || error}`;
             status.classList.add("error");
+            
+            // Build detailed error info
+            const details = {
+                message: error.message || String(error),
+                stack: error.stack,
+                name: error.name,
+                timestamp: new Date().toISOString(),
+                userAgent: navigator.userAgent,
+                url: window.location.href,
+            };
+            
+            // Add any additional error properties
+            for (const key of Object.keys(error)) {
+                if (!['message', 'stack', 'name'].includes(key)) {
+                    details[key] = error[key];
+                }
+            }
+            
+            errorDetails.textContent = JSON.stringify(details, null, 2);
+            errorDetails.classList.add("visible");
+            copyBtn.style.display = "inline-block";
+            
+            // Set up copy button
+            copyBtn.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(JSON.stringify(details, null, 2));
+                    copyBtn.textContent = "Copied!";
+                    setTimeout(() => { copyBtn.textContent = "Copy Error Details"; }, 2000);
+                } catch (e) {
+                    copyBtn.textContent = "Failed to copy";
+                    setTimeout(() => { copyBtn.textContent = "Copy Error Details"; }, 2000);
+                }
+            };
         }
 
         function updateFrameCounter(current, total) {

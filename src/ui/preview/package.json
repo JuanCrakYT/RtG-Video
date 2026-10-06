@@ -1,0 +1,6 @@
+{
+  "name": "rtg-preview",
+  "type": "module",
+  "main": "electron_main.cjs",
+  "private": true
+}

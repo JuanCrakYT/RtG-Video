@@ -1,0 +1,7 @@
+{
+  "name": "test",
+  "main": "main.cjs",
+  "devDependencies": {
+    "electron": "^16.2.8"
+  }
+}
