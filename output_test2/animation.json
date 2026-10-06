@@ -1,0 +1,86 @@
+{
+  "frames": [
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}"
+      ],
+      "pixelColors": {
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}"
+      ],
+      "pixelColors": {
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}": [
+          128,
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}"
+      ],
+      "pixelColors": {
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}"
+      ],
+      "pixelColors": {
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}": [
+          128,
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}"
+      ],
+      "pixelColors": {
+        "{2006b2ea-1380-4113-984b-5382feebb7f0}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    }
+  ],
+  "totalDuration": 0.8,
+  "frameCount": 8
+}

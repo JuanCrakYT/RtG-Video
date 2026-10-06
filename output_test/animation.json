@@ -1,0 +1,86 @@
+{
+  "frames": [
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}"
+      ],
+      "pixelColors": {
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}"
+      ],
+      "pixelColors": {
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}": [
+          128,
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}"
+      ],
+      "pixelColors": {
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}"
+      ],
+      "pixelColors": {
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}": [
+          128,
+          128,
+          128
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}"
+      ],
+      "pixelColors": {
+        "{0b3bc933-0ce3-4936-80ea-d12a3a5b80be}": [
+          255,
+          255,
+          255
+        ]
+      }
+    },
+    {
+      "duration": 0.1,
+      "activePixels": [],
+      "pixelColors": {}
+    }
+  ],
+  "totalDuration": 0.8,
+  "frameCount": 8
+}

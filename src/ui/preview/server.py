@@ -30,6 +30,11 @@ class PreviewServer:
                 self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
                 self.send_header("Access-Control-Allow-Headers", "Content-Type, Range")
+                # Allow ES module loading in Electron
+                self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+                self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
+                # Required for COEP: require-corp to allow cross-origin resources
+                self.send_header("Cross-Origin-Resource-Policy", "cross-origin")
 
             def _send_cors_preflight(self):
                 self.send_response(204)

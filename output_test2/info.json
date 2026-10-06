@@ -1,0 +1,17 @@
+{
+  "display": {
+    "type": "display",
+    "width": 1,
+    "height": 1,
+    "total_pixels": 1,
+    "active_pixels": 0,
+    "total_blocks": 20
+  },
+  "animation": {
+    "type": "animation",
+    "frameCount": 8,
+    "totalDuration": 0.8,
+    "pixelCount": 1,
+    "averageActivePerFrame": 0.625
+  }
+}

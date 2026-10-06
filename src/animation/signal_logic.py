@@ -6,8 +6,7 @@ pixels. Connection IDs are numeric because they are part of the RtG format.
 """
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Mapping, Sequence
-
+from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
 
 
@@ -278,6 +277,21 @@ def _connect_pixel_sources(
         ])
         return [wire_index]
 
+    # Convert to sets for O(1) lookup
+    source_index_set = set(source_indexes)
+    gate_or_index_set = set(physical_map.values())
+
+    def get_source_tipo_local(source_index: int) -> str:
+        """Return the correct TipoLocal for a source block index."""
+        if source_index in gate_or_index_set:
+            return TIPOLOCAL_GATE_OR
+        return TIPOLOCAL_DELAYER
+
+    def get_source_output_point(source_index: int) -> str:
+        """Return the correct output point for a source block index."""
+        # Both Delayer and Gate-OR use point "1" for output
+        return "1"
+
     def resolve(node: int) -> int:
         info = or_tree[node]
         if info.is_leaf:
@@ -286,28 +300,32 @@ def _connect_pixel_sources(
         left_index = resolve(info.child_a)
         right_index = resolve(info.child_b)
         # Left source -> Wire -> Gate-OR InputA
+        left_tipo = get_source_tipo_local(left_index)
+        left_point = get_source_output_point(left_index)
         wire_index = _wire_between(
             build,
-            left_index, DELAYER_POINT_OUTPUT,
+            left_index, left_point,
             gate_index, GATE_OR_POINT_INPUT_A,
         )
-        # Delayer connects to Wire (Delayer's own TipoLocal "2", output point "1")
+        # Source connects to Wire
         build.blocks[left_index].connections.append([
-            TIPOLOCAL_DELAYER, DELAYER_POINT_OUTPUT, to_rtg_index(wire_index)
+            left_tipo, left_point, to_rtg_index(wire_index)
         ])
         # Gate-OR connects to Wire (Gate-OR's own TipoLocal "4", InputA point "2")
         build.blocks[gate_index].connections.append([
             TIPOLOCAL_GATE_OR, GATE_OR_POINT_INPUT_A, to_rtg_index(wire_index)
         ])
         # Right source -> Wire -> Gate-OR InputB
+        right_tipo = get_source_tipo_local(right_index)
+        right_point = get_source_output_point(right_index)
         wire_index = _wire_between(
             build,
-            right_index, DELAYER_POINT_OUTPUT,
+            right_index, right_point,
             gate_index, GATE_OR_POINT_INPUT_B,
         )
-        # Delayer connects to Wire (Delayer's own TipoLocal "2", output point "1")
+        # Source connects to Wire
         build.blocks[right_index].connections.append([
-            TIPOLOCAL_DELAYER, DELAYER_POINT_OUTPUT, to_rtg_index(wire_index)
+            right_tipo, right_point, to_rtg_index(wire_index)
         ])
         # Gate-OR connects to Wire (Gate-OR's own TipoLocal "4", InputB point "3")
         build.blocks[gate_index].connections.append([
@@ -335,13 +353,19 @@ def _connect_pixel_sources(
 
 def build_signal_network(
     build: RtGBuild,
-    frame_active_pixels: Mapping[int, Iterable[str]],
+    pixel_color_frames: Dict[str, Dict[Tuple[int, int, int], List[int]]],
     pixel_inputs: Mapping[str, PixelSignalEndpoint],
     frame_durations: Sequence[float],
     gate_or_pool: Sequence[int] = (),
     timeline_delayer_indexes: Sequence[int] = (),
-) -> Dict[str, List[int]]:
+) -> Dict[str, Dict[Tuple[int, int, int], List[int]]]:
     """Append the physical frame signal network to an existing display build.
+
+    The new architecture uses an intermediate logical table:
+    ``pixel_color_frames`` maps pixel_uuid -> color -> list of frame delayer indexes.
+    
+    Each (pixel, color) combination gets its own independent OR tree.
+    This is different from the old architecture which grouped by pixel only.
 
     ``gate_or_pool`` should contain the pre-generated physical Gate-OR indexes.
     ``timeline_delayer_indexes`` should contain the Delayer indexes created by
@@ -356,27 +380,35 @@ def build_signal_network(
     else:
         delayer_indexes = _add_delayers(build, frame_durations)
 
-    active_frame_indexes: Dict[str, List[int]] = {}
-    for frame_index in range(len(frame_durations)):
-        for pixel_uuid in frame_active_pixels.get(frame_index, ()):
-            active_frame_indexes.setdefault(pixel_uuid, []).append(delayer_indexes[frame_index])
+    # Flatten all (pixel, color) combinations into a list of logical trees to build
+    # Each entry: (pixel_uuid, color, source_delayer_indexes)
+    logical_trees = []
+    for pixel_uuid, color_frames_map in pixel_color_frames.items():
+        for color, source_indexes in color_frames_map.items():
+            if source_indexes:
+                logical_trees.append((pixel_uuid, color, source_indexes))
 
+    # Allocate Gate-ORs from pool for all logical trees
     pool = list(gate_or_pool)
-    or_allocations: Dict[str, tuple] = {}
-    for pixel_uuid, source_indexes in active_frame_indexes.items():
+    tree_allocations = []  # List of (pixel_uuid, color, or_tree, physical_map, endpoint)
+    
+    for pixel_uuid, color, source_indexes in logical_trees:
         or_tree = _allocate_pixel_or_tree(source_indexes)
         internal_nodes = _get_internal_nodes_level_order(or_tree)
         if len(internal_nodes) > len(pool):
             raise ValueError(
-                f"Not enough physical Gate-ORs for pixel {pixel_uuid}: "
+                f"Not enough physical Gate-ORs for pixel {pixel_uuid} color {color}: "
                 f"need {len(internal_nodes)}, have {len(pool)}"
             )
         physical_map = {node_index: pool.pop(0) for node_index in internal_nodes}
-        or_allocations[pixel_uuid] = (or_tree, physical_map)
-
-    for pixel_uuid, source_indexes in active_frame_indexes.items():
         endpoint = pixel_inputs[pixel_uuid]
-        or_tree, physical_map = or_allocations[pixel_uuid]
+        tree_allocations.append((pixel_uuid, color, or_tree, physical_map, endpoint))
+
+    # Build all trees
+    for pixel_uuid, color, source_indexes, or_tree, physical_map, endpoint in [
+        (p, c, next(s for p2, c2, s in logical_trees if p2 == p and c2 == c), ot, pm, ep)
+        for p, c, ot, pm, ep in tree_allocations
+    ]:
         _connect_pixel_sources(
             build,
             source_indexes,
@@ -385,7 +417,7 @@ def build_signal_network(
             physical_map,
         )
 
-    return active_frame_indexes
+    return pixel_color_frames
 
 
 def validate_signal_connections(build: RtGBuild) -> List[str]:

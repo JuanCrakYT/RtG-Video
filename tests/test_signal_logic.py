@@ -1,6 +1,7 @@
 """Tests for physical frame-to-pixel RtG signal logic."""
 
 from pathlib import Path
+from typing import Dict, List, Tuple
 
 from src.animation.signal_logic import (
     PixelSignalEndpoint,
@@ -33,6 +34,37 @@ def _make_display_endpoints():
         )
         endpoints[f"pixel_{pixel_number}"] = PixelSignalEndpoint(block_index, "3")
     return build, endpoints
+
+
+def _frame_active_to_pixel_color(
+    frame_active_pixels: Dict[int, List[str]],
+    delayer_indexes: List[int],
+    default_color: Tuple[int, int, int] = (255, 255, 255),
+) -> Dict[str, Dict[Tuple[int, int, int], List[int]]]:
+    """
+    Convert old frame_active_pixels format to new pixel_color_frames format.
+    
+    Old format: {frame_index: [pixel_uuid, ...]}
+    New format: {pixel_uuid: {color: [delayer_index, ...]}}
+    
+    This assumes a single default color for all active pixels.
+    """
+    pixel_color_frames: Dict[str, Dict[Tuple[int, int, int], List[int]]] = {}
+    
+    for frame_index, pixel_uuids in frame_active_pixels.items():
+        for pixel_uuid in pixel_uuids:
+            if pixel_uuid not in pixel_color_frames:
+                pixel_color_frames[pixel_uuid] = {}
+            if default_color not in pixel_color_frames[pixel_uuid]:
+                pixel_color_frames[pixel_uuid][default_color] = []
+            pixel_color_frames[pixel_uuid][default_color].append(delayer_indexes[frame_index])
+    
+    # Sort delayer indexes for each pixel+color
+    for pixel_uuid in pixel_color_frames:
+        for color in pixel_color_frames[pixel_uuid]:
+            pixel_color_frames[pixel_uuid][color].sort()
+    
+    return pixel_color_frames
 
 
 def test_start_button_uses_base_physical_and_output_connections():
@@ -92,7 +124,7 @@ def test_physical_gate_or_table_uses_mounting_connections_only():
 
 def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
     build, endpoints = _make_display_endpoints()
-    active_pixels = {
+    frame_active_pixels = {
         0: ["pixel_0", "pixel_1", "pixel_3"],
         1: ["pixel_0", "pixel_2"],
         2: ["pixel_1", "pixel_2", "pixel_3"],
@@ -103,8 +135,16 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
         7: ["pixel_0", "pixel_3"],
     }
 
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1] * 8)
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 16)
-    build_signal_network(build, active_pixels, endpoints, [0.1] * 8, gate_or_pool)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
+    build_signal_network(build, pixel_color_frames, endpoints, [0.1] * 8, gate_or_pool, delayer_indexes)
 
     delayers = [block for block in build.blocks if block.block_type == "Delayer"]
     gate_ors = [block for block in build.blocks if block.block_type == "Gate-OR"]
@@ -125,20 +165,32 @@ def test_signal_network_uses_one_delayer_per_frame_and_numeric_ports():
 
 def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
     build, endpoints = _make_display_endpoints()
+    frame_active_pixels = {0: ["pixel_0"], 1: [], 2: ["pixel_0"]}
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 1)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {0: ["pixel_0"], 1: [], 2: ["pixel_0"]},
+        pixel_color_frames,
         {"pixel_0": endpoints["pixel_0"]},
         [0.1, 0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
     assert sum(block.block_type == "Gate-OR" for block in build.blocks) == 1
     assert not any(block.block_type == "Note" for block in build.blocks)
     wires = [block for block in build.blocks if block.block_type == "Wire"]
-    assert len(wires) == 3
+    # 3 frames = 2 timeline wires + 3 signal wires (2 Delayer->Gate-OR, 1 Gate-OR->Pixel) = 5
+    assert len(wires) == 5
     # All Wires use fixed "3" (input) and "1" (output)
     for wire in wires:
         assert len(wire.connections) == 2
@@ -150,13 +202,24 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
 
 def test_pixel_with_three_frames_uses_one_balanced_or_tree():
     build, endpoints = _make_display_endpoints()
+    frame_active_pixels = {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]}
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 2)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]},
+        pixel_color_frames,
         endpoints,
         [0.1, 0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     gate_indexes = [
@@ -166,7 +229,8 @@ def test_pixel_with_three_frames_uses_one_balanced_or_tree():
     wires = [block for block in build.blocks if block.block_type == "Wire"]
 
     assert len(gate_indexes) == 2
-    assert len(wires) == 5
+    # 3 frames = 2 timeline wires + 5 signal wires = 7
+    assert len(wires) == 7
     # All Wires use fixed "3" (input) and "1" (output)
     for wire in wires:
         assert len(wire.connections) == 2
@@ -180,14 +244,24 @@ def test_three_active_frames_use_balanced_tree_and_resolve_uuid_to_splitter():
     build, endpoints = _make_display_endpoints()
     pixels = [type("PixelStub", (), {"uuid": "pixel_0", "get_signal_endpoint": lambda self: (endpoints["pixel_0"].block_index, "3")})()]
     resolved = resolve_pixel_inputs(pixels)
-
+    frame_active_pixels = {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]}
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 2)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]},
+        pixel_color_frames,
         resolved,
         [0.1, 0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     assert sum(block.block_type == "Delayer" for block in build.blocks) == 3
@@ -197,13 +271,24 @@ def test_three_active_frames_use_balanced_tree_and_resolve_uuid_to_splitter():
 
 def test_four_frames_form_balanced_or_tree_with_three_gates():
     build, endpoints = _make_display_endpoints()
+    frame_active_pixels = {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"], 3: ["pixel_0"]}
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1, 0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 3)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"], 3: ["pixel_0"]},
+        pixel_color_frames,
         endpoints,
         [0.1, 0.1, 0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     gate_indexes = [
@@ -228,16 +313,27 @@ def test_four_frames_form_balanced_or_tree_with_three_gates():
 
 def test_multiple_pixels_get_independent_or_trees():
     build, endpoints = _make_display_endpoints()
+    frame_active_pixels = {
+        0: ["pixel_0", "pixel_1"],
+        1: ["pixel_0", "pixel_1"],
+    }
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 2)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {
-            0: ["pixel_0", "pixel_1"],
-            1: ["pixel_0", "pixel_1"],
-        },
+        pixel_color_frames,
         endpoints,
         [0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     pixel_0_inputs = sum(
@@ -256,13 +352,24 @@ def test_multiple_pixels_get_independent_or_trees():
 
 def test_physical_gate_ors_remain_attached_to_build():
     build, endpoints = _make_display_endpoints()
+    frame_active_pixels = {0: ["pixel_0"], 1: ["pixel_0"]}
+    
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(build, [0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(build, 0, 1)
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         build,
-        {0: ["pixel_0"], 1: ["pixel_0"]},
+        pixel_color_frames,
         endpoints,
         [0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     gate_ors = [block for block in build.blocks if block.block_type == "Gate-OR"]
@@ -313,16 +420,27 @@ def test_real_pixel_asset_generates_balanced_tree_counts():
     )
     assert endpoints[pixel.uuid].point_id == "3"
 
+    # Build timeline first to get delayer indexes
+    build_animation_timeline(matrix.build, [0.1, 0.1, 0.1])
+    delayer_indexes = [
+        idx for idx, block in enumerate(matrix.build.blocks)
+        if block.block_type == "Delayer"
+    ]
+    
     gate_or_pool = add_physical_gate_or_table(matrix.build, matrix.base_index, 2)
+    frame_active_pixels = {0: [pixel.uuid], 1: [pixel.uuid], 2: [pixel.uuid]}
+    pixel_color_frames = _frame_active_to_pixel_color(frame_active_pixels, delayer_indexes)
     build_signal_network(
         matrix.build,
-        {0: [pixel.uuid], 1: [pixel.uuid], 2: [pixel.uuid]},
+        pixel_color_frames,
         endpoints,
         [0.1, 0.1, 0.1],
         gate_or_pool,
+        delayer_indexes,
     )
 
     assert sum(block.block_type == "Delayer" for block in matrix.build.blocks) == 3
     assert sum(block.block_type == "Gate-OR" for block in matrix.build.blocks) == 2
-    assert sum(block.block_type == "Wire" for block in matrix.build.blocks) == 5
+    # 3 frames = 2 timeline wires + 5 signal wires = 7
+    assert sum(block.block_type == "Wire" for block in matrix.build.blocks) == 7
     assert not validate_signal_connections(matrix.build)
