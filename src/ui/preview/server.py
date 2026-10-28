@@ -235,9 +235,19 @@ class PreviewServer:
             generated_video.unlink(missing_ok=True)
 
     def url(self, token, width, height, palette):
-        from urllib.parse import quote
+        from urllib.parse import urlencode
         metadata = self.video_metadata.get(token, {})
-        query = f"video=/video/{quote(token)}&name={quote(metadata.get('name', 'video'))}&fps={metadata.get('fps', '')}&frame_count={metadata.get('frame_count', '')}&width={int(width)}&height={int(height)}&palette={quote(dumps(palette, separators=(',', ':')))}"
+        # Encode each query value (especially the JSON palette) independently.
+        # urlencode also escapes '/', '+', '&', and other characters safely.
+        query = urlencode({
+            "video": f"/video/{token}",
+            "name": metadata.get("name", "video"),
+            "fps": metadata.get("fps", ""),
+            "frame_count": metadata.get("frame_count", ""),
+            "width": int(width),
+            "height": int(height),
+            "palette": dumps(palette, separators=(",", ":")),
+        })
         return f"http://127.0.0.1:{self.httpd.server_port}/preview.html?{query}"
 
     def send_event(self, token, event):
