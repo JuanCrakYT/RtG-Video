@@ -84,7 +84,7 @@ def test_start_button_uses_base_physical_and_output_connections():
     assert len(button.connections) == 2
     base_attachments = build.blocks[base_index].properties["EphemeralAttachments"]
     button_uuids = [connection[1] for connection in button.connections]
-    assert all(connection[0] == "3" and connection[2] == base_index + 1 for connection in button.connections)
+    assert all(connection[0] == "1" and connection[2] == base_index + 1 for connection in button.connections)
     assert len(set(button_uuids)) == 2
     assert all(uuid in base_attachments for uuid in button_uuids)
     assert all(base_attachments[uuid]["cframe"][:3] == [0.0, 0.0, 0.0] for uuid in button_uuids)
@@ -123,7 +123,7 @@ def test_physical_gate_or_table_uses_mounting_connections_only():
     base_attachments = build.blocks[base_index].properties["EphemeralAttachments"]
     gate_uuids = [build.blocks[idx].connections[0][1] for idx in gate_indexes]
     for idx, attachment_uuid in zip(gate_indexes, gate_uuids):
-        assert build.blocks[idx].connections == [["3", attachment_uuid, base_index + 1]]
+        assert build.blocks[idx].connections == [["4", attachment_uuid, base_index + 1]]
         assert attachment_uuid in base_attachments
         assert base_attachments[attachment_uuid]["partName"] == "Base"
         assert base_attachments[attachment_uuid]["cframe"][:3] == [0.0, 0.0, 0.0]
