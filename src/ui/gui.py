@@ -1302,6 +1302,12 @@ class RtGDisplayGUI:
         temp_dir = Path(tempfile.mkdtemp(prefix="rtg-preview-"))
         log_path = temp_dir / "electron.log"
         environment = os.environ.copy()
+        # VS Code extensions and other Node-based launchers may set this in
+        # their own process environment. If inherited, Electron runs as Node:
+        # process.type becomes undefined and require("electron") returns the
+        # executable path instead of the Electron main-process API.
+        environment.pop("ELECTRON_RUN_AS_NODE", None)
+        environment.pop("ELECTRON_OVERRIDE_DIST_PATH", None)
         environment["RTG_PREVIEW_URL"] = url
         icon_path = project_root / "assets" / "logo" / "favicon-preview.ico"
         environment["RTG_PREVIEW_ICON"] = str(icon_path)
