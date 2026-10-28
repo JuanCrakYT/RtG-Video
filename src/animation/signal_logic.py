@@ -162,10 +162,12 @@ def build_animation_timeline(
             delayer_indexes[frame_index - 1], DELAYER_POINT_OUTPUT,
             delayer_indexes[frame_index], WIRE_POINT_RIGHT,
         )
-        # This Delayer connects to the Wire we just created
-        # Delayer uses its own TipoLocal "2" and its Wire input point ("4")
+        # Both Delayers must reference the corresponding Wire endpoint.
+        build.blocks[delayer_indexes[frame_index - 1]].connections.append([
+            TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index),
+        ])
         build.blocks[delayer_indexes[frame_index]].connections.append([
-            TIPOLOCAL_DELAYER, DELAYER_POINT_WIRE_IN, to_rtg_index(wire_index),
+            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
         ])
 
     return delayer_indexes
