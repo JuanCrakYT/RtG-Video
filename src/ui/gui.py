@@ -973,8 +973,10 @@ class RtGDisplayGUI:
                         capture.get(cv2.CAP_PROP_FRAME_COUNT)
                     ) or 0
                 capture.release()
-            # Reset analyzed total when video changes
+            # A new source video needs a fresh analysis.
             self._analyzed_total_objects = None
+            if not self.analyze_total_btn.winfo_manager():
+                self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
             self._update_output_size()
             
             if self.on_video_loaded:
@@ -983,6 +985,8 @@ class RtGDisplayGUI:
     def _on_width_changed(self, value: int):
         """Handle width slider change."""
         self._analyzed_total_objects = None
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
@@ -996,6 +1000,8 @@ class RtGDisplayGUI:
         self.selected_asset_type = self.asset_combo.get()
         self.pixel_base_object_count = self._load_asset_object_count(self.selected_asset_type)
         self._analyzed_total_objects = None
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self._update_output_size()
         if self.on_settings_changed:
             self.on_settings_changed({'pixel_template': str(self.asset_templates[self.selected_asset_type])})
@@ -1003,6 +1009,8 @@ class RtGDisplayGUI:
     def _on_height_changed(self, value: int):
         """Handle height slider change."""
         self._analyzed_total_objects = None
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
@@ -1093,9 +1101,9 @@ class RtGDisplayGUI:
                     # Only create the required in-memory RtG build; never export it.
                     pixel_palettes = {
                         (x, y): {
-                            tuple(int(channel) for channel in row[x])
-                            for row in frame
-                            if tuple(int(channel) for channel in row[x]) != BLACK
+                            tuple(int(channel) for channel in color_frame[y][x])
+                            for color_frame in color_frames
+                            if tuple(int(channel) for channel in color_frame[y][x]) != BLACK
                         }
                         for y in range(height)
                         for x in range(width)
