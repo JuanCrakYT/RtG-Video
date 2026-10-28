@@ -1,7 +1,21 @@
 // Electron entry point for the RtG Video preview.
 // In Electron's main process, the public "electron" module exposes app and BrowserWindow.
-const { app, BrowserWindow } = require("electron");
+const electron = require("electron");
+const { app, BrowserWindow } = electron;
 const path = require("node:path");
+
+if (!app || !BrowserWindow) {
+    console.error("Electron main-process API unavailable.", {
+        processType: process.type,
+        electronVersion: process.versions.electron,
+        electronExportType: typeof electron,
+        appType: typeof app,
+        browserWindowType: typeof BrowserWindow,
+        argv: process.argv,
+    });
+    process.exitCode = 1;
+    throw new Error("Electron was not launched as an application main process.");
+}
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
