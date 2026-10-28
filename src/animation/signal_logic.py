@@ -184,8 +184,8 @@ def add_start_button(
     button = RtGBlock(
         "Button",
         connections=[
-            [TIPOLOCAL_BASE, endpoint_a, to_rtg_index(base_index)],
-            [TIPOLOCAL_BASE, endpoint_b, to_rtg_index(base_index)],
+            [TIPOLOCAL_BUTTON, endpoint_a, to_rtg_index(base_index)],
+            [TIPOLOCAL_BUTTON, endpoint_b, to_rtg_index(base_index)],
         ],
         properties={"RGB": [255, 0, 0]},
     )
@@ -207,7 +207,7 @@ def add_physical_gate_or_table(
         gate = RtGBlock(
             "Gate-OR",
             connections=[
-                [TIPOLOCAL_BASE, attachment_uuid, to_rtg_index(base_index)],
+                [TIPOLOCAL_GATE_OR, attachment_uuid, to_rtg_index(base_index)],
             ],
         )
         indexes.append(build.add_block(gate))
