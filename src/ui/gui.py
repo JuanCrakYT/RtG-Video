@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import webbrowser
 
@@ -1226,44 +1227,51 @@ class RtGDisplayGUI:
         self.root.destroy()
 
     def _close_javascript_preview(self):
-        """Close the independent Electron Preview process, if it is running."""
+        """Close the independent Electron preview process and release its resources."""
         if self.preview_server is not None and self.preview_token is not None:
-            self.preview_server.send_event(
-                self.preview_token,
-                {"type": "close", "source": "main-window"},
-            )
-        if self.preview_process is None:
-            self.preview_token = None
-            # Clean up temp dir if it exists
-            if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
-                try:
-                    shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
-                except Exception:
-                    pass
-                self._preview_temp_dir = None
-            return
-        if self.preview_process.poll() is None:
-            if os.name == "nt":
-                subprocess.run(
-                    ["taskkill", "/PID", str(self.preview_process.pid), "/T", "/F"],
-                    capture_output=True,
-                    check=False,
-                )
-            else:
-                self.preview_process.terminate()
-                try:
-                    self.preview_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.preview_process.kill()
-        self.preview_process = None
-        self.preview_token = None
-        # Clean up temp dir
-        if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
             try:
-                shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
+                self.preview_server.send_event(
+                    self.preview_token,
+                    {"type": "close", "source": "main-window"},
+                )
             except Exception:
                 pass
-            self._preview_temp_dir = None
+
+        process = self.preview_process
+        self.preview_process = None
+        self.preview_token = None
+
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    if os.name == "nt":
+                        subprocess.run(
+                            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                            capture_output=True,
+                            check=False,
+                        )
+                    else:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        log_file = getattr(self, "_preview_log_file", None)
+        self._preview_log_file = None
+        if log_file is not None:
+            try:
+                if not log_file.closed:
+                    log_file.close()
+            except OSError:
+                pass
+
+        temp_dir = getattr(self, "_preview_temp_dir", None)
+        self._preview_temp_dir = None
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _open_javascript_preview(self, video_path: Path):
         """Open the JavaScript preview in Electron, falling back to the browser on failure."""
