@@ -7,7 +7,9 @@ pixels. Connection IDs are numeric because they are part of the RtG format.
 
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
+from uuid import uuid4
 from ..rtg.blocks import RtGBlock, RtGBuild, to_rtg_index
+from ..rtg.cframe import CFrame
 
 
 # TipoLocal values per object type (from RtG_Save_Format_Specification v0.406)
@@ -76,6 +78,18 @@ def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpo
         block_index, point_id = pixel.get_signal_endpoint()
         endpoints[pixel.uuid] = PixelSignalEndpoint(block_index, point_id)
     return endpoints
+
+
+def _base_attachment(build: RtGBuild, base_index: int) -> str:
+    """Register a zero-offset UUID attachment on Base and return its UUID."""
+    base = build.blocks[base_index]
+    attachments = base.properties.setdefault("EphemeralAttachments", {})
+    attachment_uuid = "{" + str(uuid4()) + "}"
+    attachments[attachment_uuid] = {
+        "partName": "Base",
+        "cframe": CFrame.identity().to_list(),
+    }
+    return attachment_uuid
 
 
 def _wire_between(
