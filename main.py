@@ -215,6 +215,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             int(settings["height"]),
             palette,
         )
+        usage = analyze_pixel_color_usage(color_frames)
         pixel_palettes = {
             (x, y): usage.get((x, y), set())
             for y in range(int(settings["height"]))
@@ -298,7 +299,9 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
         from src.animation.signal_logic import validate_signal_connections
         errors = validate_signal_connections(matrix.build)
         if errors:
-            report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+            detail = f"Errores de validación: {errors}"
+            report(GenerationStage.VALIDATION, "error", 0, 1, detail)
+            raise ValueError(detail)
         report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
         
         report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
@@ -505,7 +508,9 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
     from src.animation.signal_logic import validate_signal_connections
     errors = validate_signal_connections(matrix.build)
     if errors:
-        report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+        detail = f"Errores de validación: {errors}"
+        report(GenerationStage.VALIDATION, "error", 0, 1, detail)
+        raise ValueError(detail)
     report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
     
     report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
@@ -555,6 +560,7 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     analysis = analyze_video_with_gate_or_planning(
         settings["video"], settings["width"], settings["height"], palette
     )
+    usage = analyze_pixel_color_usage(color_frames)
     pixel_palettes = {
         (x, y): usage.get((x, y), set())
         for y in range(settings["height"])
@@ -630,11 +636,17 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     from src.animation.signal_logic import validate_signal_connections
     errors = validate_signal_connections(matrix.build)
     if errors:
-        report(GenerationStage.VALIDATION, "error", 0, 1, f"Errores de validación: {errors}")
+        detail = f"Errores de validación: {errors}"
+        report(GenerationStage.VALIDATION, "error", 0, 1, detail)
+        raise ValueError(detail)
     report(GenerationStage.VALIDATION, "completed", 1, 1, "Validación OK")
     
     report(GenerationStage.EXPORT, "active", 0, 1, "Exportando JSON...")
-    result = CombinedExporter.export_complete(matrix, sequence, "output")
+    result = CombinedExporter.export_complete(
+        matrix,
+        sequence,
+        settings.get("output_dir", "output"),
+    )
     report_blocks(len(matrix.build))
     report(GenerationStage.EXPORT, "completed", 1, 1, "Exportación completada")
     
