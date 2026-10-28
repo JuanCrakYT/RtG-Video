@@ -786,7 +786,7 @@ def main():
         sys.exit(0 if success else 1)
     elif args.gui_demo:
         # Import here to avoid issues on headless systems
-        from demo_gui import demo_gui
+        from debug.demo_gui import demo_gui
         demo_gui()
     elif args.cli:
         parser.print_help()
