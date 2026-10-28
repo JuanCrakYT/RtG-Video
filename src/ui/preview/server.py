@@ -8,6 +8,9 @@ from urllib.parse import unquote, urlparse
 from json import dumps, loads
 from urllib.request import Request, urlopen
 import mimetypes
+import os
+import subprocess
+import tempfile
 try:
     import cv2
 except ImportError:  # pragma: no cover - optional metadata enhancement
@@ -19,10 +22,19 @@ class PreviewServer:
         self.root = Path(__file__).resolve().parent
         self.videos = {}
         self.video_metadata = {}
+        self.generated_videos = {}
         self.events = {}
         owner = self
 
         class Handler(SimpleHTTPRequestHandler):
+            extensions_map = {
+                **SimpleHTTPRequestHandler.extensions_map,
+                ".js": "text/javascript",
+                ".mjs": "text/javascript",
+                ".css": "text/css",
+                ".svg": "image/svg+xml",
+            }
+
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, directory=str(owner.root), **kwargs)
 
@@ -103,7 +115,7 @@ class PreviewServer:
                     self.end_headers()
                     return
                 if path.startswith("/release/"):
-                    owner.videos.pop(path.removeprefix("/release/"), None)
+                    owner.release_video(path.removeprefix("/release/"))
                     self.send_response(204)
                     self.end_headers()
                     return
@@ -151,12 +163,56 @@ class PreviewServer:
         self.thread = Thread(target=self.httpd.serve_forever, daemon=True)
         self.thread.start()
 
+    def _prepare_browser_video(self, video):
+        """Convert AVI containers to a browser-friendly MP4 for Chromium."""
+        if video.suffix.lower() != ".avi":
+            return video, None
+
+        try:
+            import imageio_ffmpeg
+        except ImportError as exc:
+            raise RuntimeError(
+                "Previewing AVI requires imageio-ffmpeg. Install the project requirements "
+                "or convert the video to MP4 first."
+            ) from exc
+
+        output_fd, output_name = tempfile.mkstemp(prefix="rtg-preview-", suffix=".mp4")
+        os.close(output_fd)
+        output = Path(output_name)
+        command = [
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(video),
+            "-map", "0:v:0", "-map", "0:a?",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p",
+            "-preset", "ultrafast", "-crf", "23",
+            "-c:a", "aac", "-b:a", "128k",
+            "-movflags", "+faststart",
+            str(output),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True, timeout=300)
+            if not output.is_file() or output.stat().st_size == 0:
+                raise RuntimeError("FFmpeg produced an empty preview video")
+        except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+            output.unlink(missing_ok=True)
+            details = getattr(exc, "stderr", "") or str(exc)
+            raise RuntimeError(
+                f"Could not convert AVI to a browser-compatible MP4: {details[-1200:]}"
+            ) from exc
+        return output, output
+
     def register_video(self, path):
-        video = Path(path).resolve()
-        if not video.is_file():
-            raise FileNotFoundError(video)
+        original_video = Path(path).resolve()
+        if not original_video.is_file():
+            raise FileNotFoundError(original_video)
+
+        video, generated_video = self._prepare_browser_video(original_video)
         token = token_urlsafe(24)
         self.videos[token] = video
+        if generated_video is not None:
+            self.generated_videos[token] = generated_video
+
         fps = 0
         frame_count = 0
         if cv2 is not None:
@@ -165,11 +221,18 @@ class PreviewServer:
             frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) if capture.isOpened() else 0
             capture.release()
         self.video_metadata[token] = {
-            "name": video.name,
+            "name": original_video.name,
             "fps": fps if fps > 0 else "",
             "frame_count": frame_count if frame_count > 0 else "",
         }
         return token
+
+    def release_video(self, token):
+        self.videos.pop(token, None)
+        self.video_metadata.pop(token, None)
+        generated_video = self.generated_videos.pop(token, None)
+        if generated_video is not None:
+            generated_video.unlink(missing_ok=True)
 
     def url(self, token, width, height, palette):
         from urllib.parse import quote
@@ -196,6 +259,9 @@ class PreviewServer:
         self.videos.clear()
         self.video_metadata.clear()
         self.events.clear()
+        for generated_video in self.generated_videos.values():
+            generated_video.unlink(missing_ok=True)
+        self.generated_videos.clear()
         self.httpd.shutdown()
         self.httpd.server_close()
         self.thread.join(timeout=2)
