@@ -1306,16 +1306,13 @@ class RtGDisplayGUI:
         icon_path = project_root / "assets" / "logo" / "favicon-preview.ico"
         environment["RTG_PREVIEW_ICON"] = str(icon_path)
 
-        # Run the entry point from the temporary directory, not from the project
-        # tree. Otherwise the project's node_modules/electron package can shadow
-        # Electron's built-in "electron" API in some launch contexts.
-        runtime_entry = temp_dir / "electron_main.cjs"
+        # Launch the project directory as an Electron app so Electron uses
+        # package.json's "main" entry and initializes its main-process API normally.
         try:
-            shutil.copy2(electron_entry, runtime_entry)
             log_file = open(log_path, "w", encoding="utf-8", errors="replace")
             process = subprocess.Popen(
-                [str(electron_executable), str(runtime_entry)],
-                cwd=str(temp_dir),
+                [str(electron_executable), str(project_root)],
+                cwd=str(project_root),
                 env=environment,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
