@@ -331,7 +331,7 @@
 
         async function start() {
             if (!query.get("video")) throw new Error("No video was supplied");
-            source.src = query.get("video");
+            const videoUrl = query.get("video");
             const name = query.get("name") || "video";
             const fps = query.get("fps") || "";
             const frameCount = query.get("frame_count") ? Number(query.get("frame_count")) : null;
@@ -345,8 +345,21 @@
             previewTitle.textContent = `RtG Video Preview - ${name}`;
 
             await new Promise((resolve, reject) => {
+                // Attach listeners before starting the request; otherwise a fast local
+                // response can emit an event before the handlers are registered.
                 source.addEventListener("loadedmetadata", resolve, { once: true });
-                source.addEventListener("error", () => reject(new Error("The selected video could not be loaded")), { once: true });
+                source.addEventListener("error", () => {
+                    const mediaError = source.error;
+                    const code = mediaError?.code;
+                    const reason = code === 4
+                        ? "The browser does not support this video's container or codec."
+                        : code === 3
+                            ? "The browser could not decode the video."
+                            : "The browser could not load the selected video.";
+                    reject(new Error(`${reason} (media error ${code ?? "unknown"})`));
+                }, { once: true });
+                source.src = videoUrl;
+                source.load();
             });
 
             // Move the video element into Plyr's target container
