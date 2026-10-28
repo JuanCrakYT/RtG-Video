@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import webbrowser
 
@@ -1226,245 +1227,160 @@ class RtGDisplayGUI:
         self.root.destroy()
 
     def _close_javascript_preview(self):
-        """Close the independent Electron Preview process, if it is running."""
+        """Close the independent Electron preview process and release its resources."""
         if self.preview_server is not None and self.preview_token is not None:
-            self.preview_server.send_event(
-                self.preview_token,
-                {"type": "close", "source": "main-window"},
-            )
-        if self.preview_process is None:
-            self.preview_token = None
-            # Clean up temp dir if it exists
-            if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
-                try:
-                    shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
-                except Exception:
-                    pass
-                self._preview_temp_dir = None
-            return
-        if self.preview_process.poll() is None:
-            if os.name == "nt":
-                subprocess.run(
-                    ["taskkill", "/PID", str(self.preview_process.pid), "/T", "/F"],
-                    capture_output=True,
-                    check=False,
-                )
-            else:
-                self.preview_process.terminate()
-                try:
-                    self.preview_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.preview_process.kill()
-        self.preview_process = None
-        self.preview_token = None
-        # Clean up temp dir
-        if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
             try:
-                shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
+                self.preview_server.send_event(
+                    self.preview_token,
+                    {"type": "close", "source": "main-window"},
+                )
             except Exception:
                 pass
-            self._preview_temp_dir = None
+
+        process = self.preview_process
+        self.preview_process = None
+        self.preview_token = None
+
+        if process is not None:
+            try:
+                if process.poll() is None:
+                    if os.name == "nt":
+                        subprocess.run(
+                            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                            capture_output=True,
+                            check=False,
+                        )
+                    else:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=2)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+            except (OSError, subprocess.SubprocessError):
+                pass
+
+        log_file = getattr(self, "_preview_log_file", None)
+        self._preview_log_file = None
+        if log_file is not None:
+            try:
+                if not log_file.closed:
+                    log_file.close()
+            except OSError:
+                pass
+
+        temp_dir = getattr(self, "_preview_temp_dir", None)
+        self._preview_temp_dir = None
+        if temp_dir:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _open_javascript_preview(self, video_path: Path):
-        """Open the production JavaScript Preview in an independent Electron window.
-        Falls back to system default browser if Electron fails to start."""
+        """Open the JavaScript preview in Electron, falling back to the browser on failure."""
         self._close_javascript_preview()
         if self.preview_server is None:
             self.preview_server = PreviewServer()
+
         token = self.preview_server.register_video(video_path)
         self.preview_token = token
-        width = max(2, min(128, int(getattr(self, "width_value").get())))
-        height = max(2, min(128, int(getattr(self, "height_value").get())))
+        width = max(2, min(128, int(self.width_value.get())))
+        height = max(2, min(128, int(self.height_value.get())))
         url = self.preview_server.url(token, width, height, self.palette_colors)
+
         project_root = Path(__file__).resolve().parents[2]
-        electron_entry_src = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
-        local_electron = project_root / "node_modules" / "electron" / "dist" / "electron.exe"
-        if not local_electron.is_file():
-            npx = shutil.which("npx.cmd") or shutil.which("npx")
-            if npx is None:
-                raise RuntimeError("Node.js and Electron are required for the JavaScript Preview")
-            # Note: npx will have the same module resolution issue, so we still need local electron
-            raise RuntimeError("Local Electron installation not found. Please run 'npm install' in the project root.")
-        
-        # Copy electron_main.cjs to a temporary directory and create a corrected
-        # electron package to avoid the npm 'electron' package shadowing
-        # built-in Electron modules (app, BrowserWindow, etc.)
+        electron_entry = project_root / "src" / "ui" / "preview" / "electron_main.cjs"
+        electron_executable = project_root / "node_modules" / "electron" / "dist" / "electron.exe"
+        if not electron_executable.is_file():
+            raise RuntimeError(
+                "Local Electron installation not found. Run 'npm install' in the project root."
+            )
+        if not electron_entry.is_file():
+            raise RuntimeError(f"Electron preview entry point not found: {electron_entry}")
+
         import tempfile
+        import threading
+        import time
+
         temp_dir = Path(tempfile.mkdtemp(prefix="rtg-preview-"))
-        
-        # Create minimal node_modules/electron with corrected index.js
-        npm_electron_dir = temp_dir / "node_modules" / "electron"
-        npm_electron_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Write corrected index.js that provides built-in modules when inside Electron
-        corrected_index = '''const fs = require('fs');
-const path = require('path');
-
-const pathFile = path.join(__dirname, 'path.txt');
-
-function getElectronPath() {
-    let executablePath;
-    if (fs.existsSync(pathFile)) {
-        executablePath = fs.readFileSync(pathFile, 'utf-8');
-    }
-    if (process.env.ELECTRON_OVERRIDE_DIST_PATH) {
-        return path.join(process.env.ELECTRON_OVERRIDE_DIST_PATH, executablePath || 'electron');
-    }
-    if (executablePath) {
-        return path.join(__dirname, 'dist', executablePath);
-    } else {
-        throw new Error('Electron failed to install correctly');
-    }
-}
-
-// Detect if running inside Electron main process
-const isElectronMain = process.versions && process.versions.electron && process.type === 'browser';
-
-if (isElectronMain) {
-    // Inside Electron - provide access to built-in modules
-    // The built-in modules are available as core modules in Electron's Node.js
-    // We need to access them through the internal module system
-    const Module = require('module');
-    const originalRequire = Module.prototype.require;
-    
-    Module.prototype.require = function(id) {
-        if (id === 'electron') {
-            // Return a proxy that provides access to Electron's built-in modules
-            // The actual modules are available through process.electronBinding in older versions
-            // or through the internal module system
-            const electronProxy = {
-                get app() {
-                    try { return originalRequire('electron').app; } catch (e) { return null; }
-                },
-                get BrowserWindow() {
-                    try { return originalRequire('electron').BrowserWindow; } catch (e) { return null; }
-                },
-                get ipcMain() {
-                    try { return originalRequire('electron').ipcMain; } catch (e) { return null; }
-                },
-                get dialog() {
-                    try { return originalRequire('electron').dialog; } catch (e) { return null; }
-                },
-                get Menu() {
-                    try { return originalRequire('electron').Menu; } catch (e) { return null; }
-                },
-                get shell() {
-                    try { return originalRequire('electron').shell; } catch (e) { return null; }
-                },
-                get session() {
-                    try { return originalRequire('electron').session; } catch (e) { return null; }
-                },
-                get webContents() {
-                    try { return originalRequire('electron').webContents; } catch (e) { return null; }
-                },
-                get nativeImage() {
-                    try { return originalRequire('electron').nativeImage; } catch (e) { return null; }
-                },
-                get clipboard() {
-                    try { return originalRequire('electron').clipboard; } catch (e) { return null; }
-                },
-                get crashReporter() {
-                    try { return originalRequire('electron').crashReporter; } catch (e) { return null; }
-                },
-                get autoUpdater() {
-                    try { return originalRequire('electron').autoUpdater; } catch (e) { return null; }
-                },
-            };
-            // Restore original require
-            Module.prototype.require = originalRequire;
-            return electronProxy;
-        }
-        return originalRequire.apply(this, arguments);
-    };
-    
-    module.exports = {
-        get app() { return require('electron').app; },
-        get BrowserWindow() { return require('electron').BrowserWindow; },
-        get ipcMain() { return require('electron').ipcMain; },
-        get dialog() { return require('electron').dialog; },
-        get Menu() { return require('electron').Menu; },
-        get shell() { return require('electron').shell; },
-        get session() { return require('electron').session; },
-        get webContents() { return require('electron').webContents; },
-        get nativeImage() { return require('electron').nativeImage; },
-        get clipboard() { return require('electron').clipboard; },
-        get crashReporter() { return require('electron').crashReporter; },
-        get autoUpdater() { return require('electron').autoUpdater; },
-    };
-} else {
-    module.exports = getElectronPath();
-}
-'''
-        with open(npm_electron_dir / "index.js", "w", encoding="utf-8") as f:
-            f.write(corrected_index)
-        
-        # Copy path.txt and dist folder from original electron package
-        project_root = Path(__file__).resolve().parents[2]
-        original_electron = project_root / "node_modules" / "electron"
-        shutil.copy2(original_electron / "path.txt", npm_electron_dir / "path.txt")
-        shutil.copytree(original_electron / "dist", npm_electron_dir / "dist", dirs_exist_ok=True)
-        
-        # Copy electron_main.cjs to temp directory
-        electron_entry = temp_dir / "electron_main.cjs"
-        shutil.copy2(electron_entry_src, electron_entry)
-        
-        # Set up environment with RTG_PREVIEW_URL and icon path
-        project_root = Path(__file__).resolve().parents[2]
-        icon_path = project_root / "assets" / "logo" / "favicon-preview.ico"
+        log_path = temp_dir / "electron.log"
         environment = os.environ.copy()
         environment["RTG_PREVIEW_URL"] = url
+        icon_path = project_root / "assets" / "logo" / "favicon-preview.ico"
         environment["RTG_PREVIEW_ICON"] = str(icon_path)
-        # Set NODE_PATH to include our corrected electron package
-        environment["NODE_PATH"] = str(temp_dir / "node_modules")
-        
-        command = [str(local_electron), str(electron_entry)]
+
+        # Use Electron's built-in require("electron") API. Do not shadow the
+        # package with a temporary npm module; that can break Electron's built-ins.
         try:
-            self.preview_process = subprocess.Popen(
-                command,
-                cwd=str(temp_dir),
+            log_file = open(log_path, "w", encoding="utf-8", errors="replace")
+            process = subprocess.Popen(
+                [str(electron_executable), str(electron_entry)],
+                cwd=str(project_root),
                 env=environment,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
             )
-            # Store temp dir for cleanup
-            self._preview_temp_dir = temp_dir
         except OSError as error:
-            # Clean up temp dir on failure
             try:
-                shutil.rmtree(temp_dir)
-            except Exception:
+                log_file.close()
+            except (UnboundLocalError, OSError):
                 pass
+            shutil.rmtree(temp_dir, ignore_errors=True)
             raise RuntimeError(f"Could not start Electron: {error}") from error
 
-        # Wait briefly to verify Electron started successfully
-        def check_electron_started():
-            if self.preview_process is None:
-                return
-            # Give Electron a moment to start
-            time.sleep(3)
-            if self.preview_process.poll() is not None:
-                # Electron exited immediately - likely failed to start
-                self.preview_process = None
-                self.preview_token = None
-                # Clean up temp dir
-                try:
-                    if hasattr(self, '_preview_temp_dir') and self._preview_temp_dir:
-                        shutil.rmtree(self._preview_temp_dir, ignore_errors=True)
-                except Exception:
-                    pass
-                # Fallback to system default browser
-                try:
-                    webbrowser.open(url)
-                    self.root.after(0, lambda: self.video_status_label.config(
-                        text="Electron failed - opened in browser",
-                        fg="#FF9800"
-                    ))
-                except Exception:
-                    self.root.after(0, lambda: self.video_status_label.config(
-                        text=f"Electron failed - open manually: {url}",
-                        fg="#F44336"
-                    ))
+        self.preview_process = process
+        self._preview_temp_dir = str(temp_dir)
+        self._preview_log_file = log_file
 
-        import time
-        import threading
+        def check_electron_started():
+            time.sleep(3)
+
+            # A newer preview may have replaced or closed this process while
+            # this thread was waiting. Never inspect or reset another process.
+            if self.preview_process is not process:
+                return
+
+            return_code = process.poll()
+            if return_code is None:
+                return
+
+            try:
+                log_file.flush()
+                log_file.close()
+            except OSError:
+                pass
+
+            try:
+                log_text = log_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                log_text = "(Electron log could not be read.)"
+
+            self.preview_process = None
+            self.preview_token = None
+            self._preview_log_file = None
+            # Keep the log file so the startup failure can be diagnosed.
+            print(
+                f"RtG Video: Electron preview exited with code {return_code}. "
+                f"Log: {log_path}\n{log_text}",
+                file=sys.stderr,
+            )
+
+            try:
+                webbrowser.open(url)
+                status = "Electron failed - opened in browser"
+                color = "#FF9800"
+            except Exception as error:
+                status = f"Electron failed ({return_code}); open manually: {url}"
+                color = "#F44336"
+                print(f"RtG Video: browser fallback failed: {error}", file=sys.stderr)
+
+            try:
+                self.root.after(
+                    0,
+                    lambda text=status, fg=color: self.video_status_label.config(
+                        text=text, fg=fg
+                    ),
+                )
+            except Exception:
+                pass
+
         threading.Thread(target=check_electron_started, daemon=True).start()
 
     def _toggle_preview_pause(self):
