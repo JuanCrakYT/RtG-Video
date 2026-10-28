@@ -849,6 +849,8 @@ class RtGDisplayGUI:
             self.palette_colors + [selected_color]
         )]
         self._analyzed_total_objects = None
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self._refresh_palette_combo()
         self._update_output_size()
 
@@ -861,9 +863,12 @@ class RtGDisplayGUI:
             return
         self.palette_colors.pop(selected_index)
         self._analyzed_total_objects = None
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
         self._refresh_palette_combo()
         self._update_output_size()
         self._play_sound("notification.mp3")
+
     def _build_action_buttons(self, parent):
         """Build the action buttons."""
         button_frame = tk.Frame(parent, bg=self.bg_primary)
