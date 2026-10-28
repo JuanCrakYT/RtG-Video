@@ -1037,156 +1037,201 @@ class RtGDisplayGUI:
             self.total_objects_label.config(text=f"{total_objects:,} minimum objects")
     
     def _on_analyze_real_total(self):
-        """Analyze the loaded video to calculate the real total objects for the build."""
+        """Build and analyze the video display in memory without exporting files."""
         if not self.loaded_video_path:
-            self._showwarning("No Video", "Please load a video first to analyze real total objects.")
+            self._showwarning("No Video", "Please load a video first to analyze it.")
             return
-        
-        # Update UI to show analyzing state
-        self.analyze_total_btn.config(text="Analyzing...", state=tk.DISABLED, bg="#FFD54F")
+
+        self.analyze_total_btn.config(
+            text="Analyzing...", state=tk.DISABLED, bg="#FFD54F"
+        )
         self.total_objects_label.config(text="Analyzing video...")
         self.root.update_idletasks()
-        
+
         try:
-            # Run analysis in background thread to keep UI responsive
-            import threading
             import queue
-            
+            import threading
+
             result_queue = queue.Queue()
-            
+            video_path = str(self.loaded_video_path)
+            width = int(self.width_value_slider.get())
+            height = int(self.height_value_slider.get())
+            palette = [list(color) for color in self.palette_colors]
+            template_path = str(self.asset_templates[self.selected_asset_type])
+
             def analyze_worker():
                 try:
-                    # Import needed modules
                     from src.rtg.uuid import reset_uuid_manager
                     from src.display.matrix import MatrixBuilder
                     from src.display.pixel import PixelTemplate
                     from src.rtg.format import load_pixel_template_from_file
                     from src.animation.signal_logic import (
-                        add_start_button, add_physical_gate_or_table,
-                        build_animation_timeline, build_signal_network, resolve_pixel_inputs
+                        add_start_button,
+                        add_physical_gate_or_table,
+                        build_animation_timeline,
+                        build_signal_network,
+                        resolve_pixel_inputs,
+                        validate_signal_connections,
                     )
                     from src.video.processing import (
-                        analyze_video_colors, analyze_pixel_color_usage,
-                        sequence_from_color_frames
+                        BLACK,
+                        analyze_video_colors,
+                        sequence_from_color_frames,
                     )
+                    from src.video.analysis import analyze_video_with_gate_or_planning
                     from src.config import DEFAULT_PIXEL_SPACING
                     from src.rtg.blocks import RtGBlock
-                    from src.export.rtg_exporter import CombinedExporter
-                    from src.video.processing import BLACK, WHITE, GRAY
-                    
-                    # Get settings
-                    width = getattr(self, 'width_value_slider').get()
-                    height = getattr(self, 'height_value_slider').get()
-                    palette = [list(color) for color in self.palette_colors]
-                    
+
                     reset_uuid_manager()
-                    pixel_template = PixelTemplate(load_pixel_template_from_file(
-                        str(self.asset_templates[self.selected_asset_type])
-                    ))
-                    
-                    # Analyze video colors
                     duration, color_frames = analyze_video_colors(
-                        str(self.loaded_video_path),
-                        width,
-                        height,
-                        palette,
+                        video_path, width, height, palette
                     )
-                    
-                    usage = analyze_pixel_color_usage(color_frames)
+                    analysis = analyze_video_with_gate_or_planning(
+                        video_path, width, height, palette
+                    )
+
+                    # Only create the required in-memory RtG build; never export it.
                     pixel_palettes = {
-                        (x, y): usage.get((x, y), set())
+                        (x, y): {
+                            tuple(int(channel) for channel in row[x])
+                            for row in frame
+                            if tuple(int(channel) for channel in row[x]) != BLACK
+                        }
                         for y in range(height)
                         for x in range(width)
                     }
-                    
-                    # Build matrix
                     matrix = (
                         MatrixBuilder()
                         .set_dimensions(width, height)
                         .set_spacing(DEFAULT_PIXEL_SPACING)
-                        .set_template(pixel_template)
+                        .set_template(PixelTemplate(load_pixel_template_from_file(template_path)))
                         .set_palette_by_position(pixel_palettes)
                         .build()
                     )
-                    # Add canvas gyro
-                    matrix.build.add_block(
-                        RtGBlock(
-                            "Gyro",
-                            connections=[["1", "1", 1]],
-                            properties={"Activated": True, "RGB": [73, 26, 112]},
-                        )
-                    )
-                    
-                    # Create animation sequence
-                    start_button_index = add_start_button(matrix.build, matrix.base_index)
+                    matrix.build.add_block(RtGBlock(
+                        "Gyro",
+                        connections=[["1", "1", 1]],
+                        properties={"Activated": True, "RGB": [73, 26, 112]},
+                    ))
+
                     sequence = sequence_from_color_frames(matrix, duration, color_frames)
-                    
-                    # Calculate gate OR count
-                    pixel_frame_counts = {
-                        pixel.uuid: sum(
-                            1 for frame in sequence.frames if pixel.uuid in frame.get_active_pixels()
-                        )
-                        for pixel in matrix.iter_pixels()
-                    }
-                    gate_or_count = max(
-                        len(list(matrix.iter_pixels())),
-                        sum(max(0, count - 1) for count in pixel_frame_counts.values()),
-                    )
-                    
+                    start_button_index = add_start_button(matrix.build, matrix.base_index)
                     gate_or_indexes = add_physical_gate_or_table(
-                        matrix.build,
-                        matrix.base_index,
-                        gate_or_count,
+                        matrix.build, matrix.base_index, analysis.total_gate_ors_needed
                     )
-                    
-                    build_animation_timeline(
+                    timeline_delayer_indexes = build_animation_timeline(
                         matrix.build,
                         [frame.duration for frame in sequence.frames],
                         start_source_index=start_button_index,
                     )
-                    
+
+                    # Map each analyzed coordinate+color to its physical pixel UUID.
+                    position_to_uuid = {}
+                    for position, layers in matrix.pixel_layers.items():
+                        for layer in layers:
+                            splitter = next(
+                                (block for block in layer.blocks if block.block_type == "Splitter_3"),
+                                None,
+                            )
+                            if splitter is not None:
+                                rgb = tuple(splitter.properties.get("RGB", ()))
+                                if rgb != BLACK:
+                                    position_to_uuid.setdefault(position, {})[rgb] = layer.uuid
+
+                    pixel_color_frames = {}
+                    for pixel_analysis in analysis.pixel_analyses:
+                        layers_by_color = position_to_uuid.get(pixel_analysis.position, {})
+                        color_map = {}
+                        for usage in pixel_analysis.color_usages:
+                            pixel_uuid = layers_by_color.get(tuple(usage.color))
+                            if pixel_uuid is None:
+                                continue
+                            color_map.setdefault(pixel_uuid, {})[tuple(usage.color)] = [
+                                timeline_delayer_indexes[index] for index in usage.frames
+                            ]
+                        for pixel_uuid, color_map_for_pixel in color_map.items():
+                            pixel_color_frames.setdefault(pixel_uuid, {}).update(color_map_for_pixel)
+
                     build_signal_network(
                         matrix.build,
-                        {
-                            index: frame.get_active_pixels()
-                            for index, frame in enumerate(sequence.frames)
-                        },
+                        pixel_color_frames,
                         resolve_pixel_inputs(matrix.iter_pixels()),
                         [frame.duration for frame in sequence.frames],
                         gate_or_indexes,
+                        timeline_delayer_indexes,
                     )
-                    
-                    # Return the real total object count
-                    real_total = len(matrix.build)
-                    result_queue.put(('success', real_total))
-                    
-                except Exception as e:
-                    result_queue.put(('error', str(e)))
-            
+                    validation_errors = validate_signal_connections(matrix.build)
+                    if validation_errors:
+                        raise ValueError(f"Signal validation failed: {validation_errors}")
+
+                    active_per_frame = [
+                        sum(
+                            1 for row in color_frame for color in row
+                            if tuple(color) != BLACK
+                        )
+                        for color_frame in color_frames
+                    ]
+                    stats = matrix.get_stats()
+                    metrics = {
+                        "blocks": len(matrix.build),
+                        "frames": len(sequence.frames),
+                        "canvas_pixels": width * height,
+                        "physical_pixel_layers": stats["total_pixels"],
+                        "active_positions": len(analysis.pixel_analyses),
+                        "active_pixel_appearances": sum(active_per_frame),
+                        "max_active_pixels_per_frame": max(active_per_frame, default=0),
+                        "colors": len(analysis.unique_colors),
+                        "gate_ors": analysis.total_gate_ors_needed,
+                        "width": width,
+                        "height": height,
+                    }
+                    result_queue.put(("success", metrics))
+                except Exception as exc:
+                    result_queue.put(("error", str(exc)))
+
             def check_result():
                 try:
                     status, result = result_queue.get_nowait()
-                    if status == 'success':
-                        self._analyzed_total_objects = result
-                        self.total_objects_label.config(text=f"{result:,} total objects")
-                        self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
-                        self._play_sound("notification.mp3")
-                    else:
-                        self.total_objects_label.config(text="Analysis failed")
-                        self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
-                        self._showerror("Analysis Failed", f"Could not analyze video: {result}")
                 except queue.Empty:
                     self.root.after(100, check_result)
-            
-            thread = threading.Thread(target=analyze_worker, daemon=True)
-            thread.start()
+                    return
+
+                if status != "success":
+                    self.total_objects_label.config(text="Analysis failed")
+                    self.analyze_total_btn.config(
+                        text="Analyze real total", state=tk.NORMAL, bg=self.border_color
+                    )
+                    self._showerror("Analysis Failed", f"Could not analyze video: {result}")
+                    return
+
+                self._analyzed_total_objects = result["blocks"]
+                self.total_objects_label.config(text=f'{result["blocks"]:,} total blocks')
+                self.analyze_total_btn.pack_forget()
+                self._play_sound("notification.mp3")
+                report = (
+                    "Video analysis completed (nothing was saved).\\n\\n"
+                    f'Canvas: {result["width"]} × {result["height"]} '
+                    f'({result["canvas_pixels"]:,} coordinates)\\n'
+                    f'Frames: {result["frames"]:,}\\n'
+                    f'Blocks in in-memory build: {result["blocks"]:,}\\n'
+                    f'Physical pixel layers: {result["physical_pixel_layers"]:,}\\n'
+                    f'Positions active at least once: {result["active_positions"]:,}\\n'
+                    f'Active pixel appearances across all frames: {result["active_pixel_appearances"]:,}\\n'
+                    f'Maximum active pixels in one frame: {result["max_active_pixels_per_frame"]:,}\\n'
+                    f'Visible colors used: {result["colors"]:,}\\n'
+                    f'Gate-OR blocks planned: {result["gate_ors"]:,}'
+                )
+                self._showinfo("Video Analysis", report)
+
+            threading.Thread(target=analyze_worker, daemon=True).start()
             self.root.after(100, check_result)
-            
-        except Exception as e:
+        except Exception as exc:
             self.total_objects_label.config(text="Analysis failed")
-            self.analyze_total_btn.config(text="Analyze real total", state=tk.NORMAL, bg=self.border_color)
-            self._showerror("Analysis Failed", f"Could not start analysis: {e}")
-    
+            self.analyze_total_btn.config(
+                text="Analyze real total", state=tk.NORMAL, bg=self.border_color
+            )
+            self._showerror("Analysis Failed", f"Could not start analysis: {exc}")
+
     def _close_preview(self):
         """Stop preview playback and close the preview window."""
         self.preview_is_playing = False
