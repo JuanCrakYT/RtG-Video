@@ -3,7 +3,7 @@
 // TODO: This needs to be split into smaller files and cleaned up
 // ==========================================================================
 
-import RangeTouch from './rangetouch.js';
+import RangeTouch from './utils/rangetouch.js';
 
 import captions from './captions';
 import html5 from './html5';
