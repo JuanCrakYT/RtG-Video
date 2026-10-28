@@ -215,6 +215,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             int(settings["height"]),
             palette,
         )
+        usage = analyze_pixel_color_usage(color_frames)
         pixel_palettes = {
             (x, y): usage.get((x, y), set())
             for y in range(int(settings["height"]))
@@ -555,6 +556,7 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     analysis = analyze_video_with_gate_or_planning(
         settings["video"], settings["width"], settings["height"], palette
     )
+    usage = analyze_pixel_color_usage(color_frames)
     pixel_palettes = {
         (x, y): usage.get((x, y), set())
         for y in range(settings["height"])
