@@ -464,7 +464,6 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
     timeline_delayer_indexes = build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
-        start_source_index=start_button_index,
     )
     report_blocks(len(matrix.build))
     report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
@@ -596,7 +595,6 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     timeline_delayer_indexes = build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
-        start_source_index=start_button_index,
     )
     report_blocks(len(matrix.build))
     report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
