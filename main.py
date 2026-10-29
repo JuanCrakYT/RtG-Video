@@ -346,57 +346,48 @@ def _build_pixel_color_frame_table(
     analysis,
 ):
     """
-    Build the logical table mapping pixel_uuid -> color -> list of frame delayer indexes.
-    
-    This is the key intermediate table that separates logical analysis from physical generation.
-    Each (pixel, color) combination gets its own independent OR tree.
-    
-    Args:
-        matrix: DisplayMatrix with pixels
-        sequence: AnimationSequence with frame data
-        timeline_delayer_indexes: List of delayer indices (one per frame)
-        analysis: VideoAnalysisResult with pixel+color+frames info
-        
-    Returns:
-        Dict[pixel_uuid, Dict[color, List[delayer_index]]]
+    Map each analyzed (position, color) to the physical pixel layer that has
+    that exact RGB value, then associate it with the Delayers for its frames.
     """
-    # Map from pixel position to pixel UUID
-    pos_to_uuid = {}
-    for pos, pixel in matrix.pixels.items():
-        pos_to_uuid[pos] = pixel.uuid
-    # Also check pixel_layers for overlay pixels
-    for pos, layers in matrix.pixel_layers.items():
+    # Each coordinate can contain several physical pixel layers, one per color.
+    # Do not overwrite the coordinate with the last Splitter_3 found: that
+    # disconnects the other colors from their own physical pixel inputs.
+    pixel_uuid_by_position_color = {}
+    for position, layers in matrix.pixel_layers.items():
         for layer in layers:
-            # Find the splitter color to match with analysis
-            for block in layer.blocks:
-                if block.block_type == "Splitter_3":
-                    color = tuple(block.properties.get("RGB", ()))
-                    if color != (0, 0, 0):
-                        pos_to_uuid[pos] = layer.uuid
-                        break
-    
-    # Build the logical table from analysis
+            splitter = next(
+                (
+                    block
+                    for block in layer.blocks
+                    if block.block_type == "Splitter_3"
+                ),
+                None,
+            )
+            if splitter is None:
+                continue
+            rgb = tuple(int(channel) for channel in splitter.properties.get("RGB", ()))
+            if len(rgb) == 3:
+                pixel_uuid_by_position_color[(position, rgb)] = layer.uuid
+
     pixel_color_frames = {}
-    
     for pixel_analysis in analysis.pixel_analyses:
-        position = pixel_analysis.position
-        pixel_uuid = pos_to_uuid.get(position)
-        
-        if pixel_uuid is None:
-            continue
-            
-        color_frames_map = {}
+        position = tuple(pixel_analysis.position)
         for color_usage in pixel_analysis.color_usages:
-            color = color_usage.color
-            frames = color_usage.frames
-            
-            # Map frame indices to delayer indexes
-            delayer_indices = [timeline_delayer_indexes[f] for f in frames]
-            color_frames_map[color] = delayer_indices
-            
-        if color_frames_map:
-            pixel_color_frames[pixel_uuid] = color_frames_map
-            
+            color = tuple(int(channel) for channel in color_usage.color)
+            pixel_uuid = pixel_uuid_by_position_color.get((position, color))
+            if pixel_uuid is None:
+                # Black coordinates and colors not instantiated as physical
+                # layers have no Splitter_3 input to wire to.
+                continue
+
+            delayer_indices = [
+                timeline_delayer_indexes[frame_index]
+                for frame_index in color_usage.frames
+                if 0 <= frame_index < len(timeline_delayer_indexes)
+            ]
+            if delayer_indices:
+                pixel_color_frames.setdefault(pixel_uuid, {})[color] = delayer_indices
+
     return pixel_color_frames
 
 
