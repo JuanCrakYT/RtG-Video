@@ -145,9 +145,15 @@ class GenerationWorker:
             self._send_update(finished=True, result=result, overall_percent=100.0)
         except Exception as e:
             import traceback
+            # Include the traceback: generation can stop before CombinedExporter
+            # writes the complete build, leaving only the previously exported
+            # physical canvas and making all animation blocks appear missing.
+            error_details = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
             self._send_update(
                 finished=True,
-                error=f"{type(e).__name__}: {e}",
+                error=error_details,
                 overall_percent=0.0
             )
     
