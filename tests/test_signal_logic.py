@@ -75,7 +75,7 @@ def test_start_button_uses_base_physical_and_output_connections():
     delayer_indexes = build_animation_timeline(
         build,
         [0.1, 0.1, 0.1],
-        start_source_index=button_index,
+        base_index=base_index,
     )
 
     button = build.blocks[button_index]
@@ -89,12 +89,16 @@ def test_start_button_uses_base_physical_and_output_connections():
     assert all(uuid in base_attachments for uuid in button_uuids)
     assert all(base_attachments[uuid]["cframe"][:3] == [0.0, 0.0, 0.0] for uuid in button_uuids)
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
-    # First Delayer references the Button output; later Delayers use reciprocal Wire endpoints.
+    # First Delayer attaches to Base; later Delayers use reciprocal Wire endpoints.
+    base_attachment_uuid = build.blocks[delayer_indexes[0]].connections[0][1]
+    assert build.blocks[delayer_indexes[0]].connections[0] == [
+        "2", base_attachment_uuid, base_index + 1,
+    ]
+    assert base_attachment_uuid in base_attachments
     wire0_index = delayer_indexes[-1] + 1
     wire1_index = wire0_index + 1
-    assert build.blocks[delayer_indexes[0]].connections == [
-        ["2", "2", button_index + 1],
-        ["2", "4", wire0_index + 1],
+    assert build.blocks[delayer_indexes[0]].connections[1] == [
+        "2", "4", wire0_index + 1,
     ]
     assert build.blocks[delayer_indexes[1]].connections == [
         ["2", "2", wire0_index + 1],
