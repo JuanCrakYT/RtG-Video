@@ -97,10 +97,10 @@ def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     assert len(wire_indexes) == 2
     wire0_index, wire1_index = wire_indexes
 
-    # Each Delayer stores exactly one connection: the first to Base, and
-    # each later Delayer to the Wire that feeds it.
+    # Each Delayer stores exactly one connection: frame 0 receives the
+    # Button output, and later frames receive their incoming timeline Wire.
     assert build.blocks[delayer_indexes[0]].connections == [
-        ["2", "5", base_index + 1],
+        ["2", "2", button_index + 1],
     ]
     assert build.blocks[delayer_indexes[1]].connections == [
         ["2", "4", wire0_index + 1],
@@ -110,8 +110,7 @@ def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     ]
     assert all(len(build.blocks[index].connections) == 1 for index in delayer_indexes)
 
-    # Each Wire records both neighboring Delayers; the previous Delayer does
-    # not receive a second connection to its outgoing Wire.
+    # Each Wire records both endpoints; Delayers keep only their single parent connection.
     assert build.blocks[wire0_index].connections == [
         ["3", "1", delayer_indexes[0] + 1],
         ["1", "1", delayer_indexes[1] + 1],
