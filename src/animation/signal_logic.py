@@ -160,11 +160,10 @@ def build_animation_timeline(
     frame_durations: Sequence[float],
     base_index: int = 0,
 ) -> List[int]:
-    """Append one Delayer per frame using a single parent connection each.
+    """Append one Delayer per frame, starting from the Base-mounted Button.
 
-    The first Delayer attaches to Base. Every later Delayer attaches to the
-    incoming Wire. Each Wire records both endpoint blocks, but a Delayer does
-    not get an extra reciprocal connection for its outgoing Wire.
+    Every Delayer stores exactly one connection. Frame 0 receives the Button
+    output; later frames receive their incoming timeline Wire.
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
@@ -176,16 +175,27 @@ def build_animation_timeline(
             f"{build.blocks[base_index].block_type}, not Base"
         )
 
+    # Reuse the Button created by the generation pipeline. If this helper is
+    # used independently (for example by a diagnostic script), create it.
+    if not 0 <= base_index < len(build.blocks):
+        raise ValueError(f"Invalid Base index: {base_index}")
+    button_index = next(
+        (index for index in range(len(build.blocks) - 1, -1, -1)
+         if build.blocks[index].block_type == "Button"),
+        None,
+    )
+    if button_index is None:
+        button_index = add_start_button(build, base_index)
+
     delayer_indexes = _add_delayers(build, frame_durations)
 
-    # Each Delayer has exactly one connection: frame 0 mounts to Base.
+    # The first Delayer receives the Button's output. It does not connect
+    # directly to Base and still has exactly one connection.
     build.blocks[delayer_indexes[0]].connections.append([
-        TIPOLOCAL_DELAYER, BASE_POINT_TOP, to_rtg_index(base_index)
+        TIPOLOCAL_DELAYER, "2", to_rtg_index(button_index)
     ])
 
-    # Each later Delayer references its incoming Wire only. The Wire itself
-    # records both adjacent Delayers, so the previous Delayer needs no second
-    # connection to its outgoing Wire.
+    # Each later Delayer references only its incoming Wire.
     for frame_index in range(1, len(frame_durations)):
         wire_index = _wire_between(
             build,
@@ -203,14 +213,13 @@ def add_start_button(
     base_index: int,
 ) -> int:
     """Create a start Button physically mounted on the Base."""
-    # Button has two physical endpoints; each uses its own Base UUID attachment.
-    endpoint_a = _base_attachment(build, base_index)
-    endpoint_b = _base_attachment(build, base_index)
+    # Match the real in-game Button mounting: both Button endpoints
+    # connect directly to Base using their numeric point IDs.
     button = RtGBlock(
         "Button",
         connections=[
-            [TIPOLOCAL_BUTTON, endpoint_a, to_rtg_index(base_index)],
-            [TIPOLOCAL_BUTTON, endpoint_b, to_rtg_index(base_index)],
+            ["1", "2", to_rtg_index(base_index)],
+            ["3", "4", to_rtg_index(base_index)],
         ],
         properties={"RGB": [255, 0, 0]},
     )
