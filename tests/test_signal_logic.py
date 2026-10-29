@@ -204,8 +204,13 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
         assert len(wire.connections) == 2
         assert wire.connections[0][0] == "3"  # Wire input side
         assert wire.connections[1][0] == "1"  # Wire output side
-    # Last wire connects Gate-OR output to Splitter_3
+    # Last wire connects Gate-OR output to Splitter_3.
+    splitter = build.blocks[endpoints["pixel_0"].block_index]
     assert wires[-1].connections[1][2] == endpoints["pixel_0"].block_index + 1
+    # Reuse the Splitter input for the Wire; do not leave the old parent
+    # connection and append a second connection to the same input.
+    assert len(splitter.connections) == 4
+    assert splitter.connections[0] == ["3", "4", len(build.blocks) - len(wires) + len(wires)]
 
 
 def test_pixel_with_three_frames_uses_one_balanced_or_tree():
@@ -250,7 +255,7 @@ def test_pixel_with_three_frames_uses_one_balanced_or_tree():
 
 def test_three_active_frames_use_balanced_tree_and_resolve_uuid_to_splitter():
     build, endpoints = _make_display_endpoints()
-    pixels = [type("PixelStub", (), {"uuid": "pixel_0", "get_signal_endpoint": lambda self: (endpoints["pixel_0"].block_index, "3")})()]
+    pixels = [type("PixelStub", (), {"uuid": "pixel_0", "get_signal_endpoint": lambda self: (endpoints["pixel_0"].block_index, "1")})()]
     resolved = resolve_pixel_inputs(pixels)
     frame_active_pixels = {0: ["pixel_0"], 1: ["pixel_0"], 2: ["pixel_0"]}
     
