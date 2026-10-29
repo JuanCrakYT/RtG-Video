@@ -985,10 +985,8 @@ class RtGDisplayGUI:
                         capture.get(cv2.CAP_PROP_FRAME_COUNT)
                     ) or 0
                 capture.release()
-            # A new source video needs a fresh analysis.
-            self._analyzed_total_objects = None
-            if not self.analyze_total_btn.winfo_manager():
-                self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+            # Invalidate any analysis of the previous video and re-enable the button.
+            self._reset_video_analysis()
             self._update_output_size()
             
             if self.on_video_loaded:
