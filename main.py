@@ -243,7 +243,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
     
     if settings.get("video"):
         report(GenerationStage.TIMELINE, "active", 0, 1, "Creando botón de inicio...")
-        start_button_index = add_start_button(matrix.build, matrix.base_index)
+        add_start_button(matrix.build, matrix.base_index)
         
         report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
         export_speed = settings.get("export_speed", 1.0)
