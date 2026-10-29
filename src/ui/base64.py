@@ -1,5 +1,6 @@
-"""Compact JSON export for the latest generated display."""
+"""Base64 export for the latest generated display JSON."""
 
+import base64
 import json
 from pathlib import Path
 from typing import Optional
@@ -9,7 +10,7 @@ def encode_latest_display(
     display_path: Optional[Path] = None,
     output_path: Path = Path("output") / "base64.txt",
 ) -> str:
-    """Read the latest display JSON, compact it to one line, save it, and return it."""
+    """Compact the display JSON, save it, and return its Base64 encoding."""
     source_path = Path(display_path) if display_path is not None else Path("output") / "display.json"
     if not source_path.is_file():
         raise FileNotFoundError(
@@ -24,9 +25,11 @@ def encode_latest_display(
         ensure_ascii=False,
         separators=(",", ":"),
     )
+    encoded_base64 = base64.b64encode(compact_json.encode("utf-8")).decode("ascii")
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(compact_json, encoding="utf-8")
+    output_path.write_text(encoded_base64, encoding="ascii")
 
     json_output_path = output_path.with_name("base64.json")
     json_output_path.write_text(compact_json, encoding="utf-8")
-    return compact_json
+    return encoded_base64
