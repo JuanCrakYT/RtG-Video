@@ -90,11 +90,19 @@ def test_start_button_uses_base_physical_and_output_connections():
     assert all(base_attachments[uuid]["cframe"][:3] == [0.0, 0.0, 0.0] for uuid in button_uuids)
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
     # First Delayer references the Button output; later Delayers use reciprocal Wire endpoints.
-    assert build.blocks[delayer_indexes[0]].connections == [["2", "1", button_index + 1]]
     wire0_index = delayer_indexes[-1] + 1
-    assert build.blocks[delayer_indexes[1]].connections == [["2", "4", wire0_index + 1]]
     wire1_index = wire0_index + 1
-    assert build.blocks[delayer_indexes[2]].connections == [["2", "4", wire1_index + 1]]
+    assert build.blocks[delayer_indexes[0]].connections == [
+        ["2", "2", button_index + 1],
+        ["2", "4", wire0_index + 1],
+    ]
+    assert build.blocks[delayer_indexes[1]].connections == [
+        ["2", "2", wire0_index + 1],
+        ["2", "4", wire1_index + 1],
+    ]
+    assert build.blocks[delayer_indexes[2]].connections == [
+        ["2", "2", wire1_index + 1],
+    ]
 
     wires = [block for block in build.blocks if block.block_type == "Wire"]
     # For 3 frames: 2 inter-Delayer Wires (N-1)
@@ -219,6 +227,10 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
             continue
         for connection in wire.connections:
             endpoint_block = build.blocks[connection[2] - 1]
+            if endpoint_block.block_type == "Gate-OR":
+                # In-game Gate-OR examples are referenced by Wires but keep
+                # their own connections list empty.
+                continue
             assert any(
                 reciprocal[2] == wire_index + 1
                 for reciprocal in endpoint_block.connections
