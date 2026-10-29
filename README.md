@@ -122,20 +122,12 @@ RtG Video/
 │  ├─ __init__.py
 │  └─ config.py
 │
-├─ tests/
-│  ├─ test_canvas.py
-│  ├─ test_core.py
-│  ├─ test_output_sync.py
-│  └─ test_signal_logic.py
-│
 ├─ .gitattributes
 ├─ .gitignore
 ├─ capture_gui.py
 ├─ demo_gui.py
 ├─ GUI_COMPLETE.md
 ├─ GUI_DOCUMENTATION.md
-├─ GUI_FIXES_SUMMARY.py
-├─ GUI_SUMMARY.py
 ├─ IMPLEMENTATION_SUMMARY.md
 ├─ LICENSE
 ├─ main.py
@@ -146,8 +138,7 @@ RtG Video/
 ├─ requirements.txt
 ├─ RtG_Save_Format_Specification-spanish.md
 ├─ SETUP_COMPLETE.md
-├─ test_gui_features.py
-└─ verify_gui_elements.py
+└─ testing/
 ```
 
 ### Source modules
@@ -258,7 +249,6 @@ Production files:
 * `src/ui/preview/preview.js` — browser controller, frame processing, Canvas 2D rendering, pause/resume, callbacks, and cleanup.
 * `src/ui/preview/preview.html` — production entry point for a selected local video.
 * `src/ui/preview/server.py` — loopback server and tokenized video serving.
-* `tests/js/` — production-module Node.js tests.
 
 The original Python preview in `src/ui/gui.py` is intentionally retained as a
 fallback. Its OpenCV, Tkinter, MoviePy, and Pygame paths have not been
