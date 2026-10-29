@@ -160,19 +160,14 @@ def build_animation_timeline(
     frame_durations: Sequence[float],
     base_index: int = 0,
 ) -> List[int]:
-    """Append one Delayer per frame in temporal order.
+    """Append one Delayer per frame using a single parent connection each.
 
-    Timeline chain:
-    - First Delayer connects to a UUID attachment on Base.
-    - Each later Delayer connects via a Wire from the previous Delayer.
+    The first Delayer attaches to Base. Every later Delayer attaches to the
+    incoming Wire. Each Wire records both endpoint blocks, but a Delayer does
+    not get an extra reciprocal connection for its outgoing Wire.
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
-
-    delayer_indexes = _add_delayers(build, frame_durations)
-
-    # The first Delayer connects to Base through an ordinary numbered
-    # connection, matching the normal block-to-Base connection pattern.
     if not 0 <= base_index < len(build.blocks):
         raise ValueError(f"Invalid Base index: {base_index}")
     if build.blocks[base_index].block_type != "Base":
@@ -180,30 +175,28 @@ def build_animation_timeline(
             f"Timeline Base index {base_index} refers to "
             f"{build.blocks[base_index].block_type}, not Base"
         )
+
+    delayer_indexes = _add_delayers(build, frame_durations)
+
+    # Each Delayer has exactly one connection: frame 0 mounts to Base.
     build.blocks[delayer_indexes[0]].connections.append([
         TIPOLOCAL_DELAYER, BASE_POINT_TOP, to_rtg_index(base_index)
     ])
 
-    # Create subsequent Delayers, each connected via a Wire from previous Delayer
+    # Each later Delayer references its incoming Wire only. The Wire itself
+    # records both adjacent Delayers, so the previous Delayer needs no second
+    # connection to its outgoing Wire.
     for frame_index in range(1, len(frame_durations)):
-        # Create Wire connecting previous Delayer to this Delayer
         wire_index = _wire_between(
             build,
             delayer_indexes[frame_index - 1], DELAYER_POINT_OUTPUT,
             delayer_indexes[frame_index], DELAYER_POINT_INPUT,
         )
-        # Both Delayers must reference the corresponding Wire endpoint.
-        # In game builds the source Delayer attaches to Wire point 4,
-        # while the receiving Delayer attaches to Wire point 2.
-        build.blocks[delayer_indexes[frame_index - 1]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
-        ])
         build.blocks[delayer_indexes[frame_index]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index),
+            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
         ])
 
     return delayer_indexes
-
 
 def add_start_button(
     build: RtGBuild,
@@ -318,10 +311,8 @@ def _connect_pixel_sources(
             source_indexes[0], DELAYER_POINT_OUTPUT,
             endpoint.block_index, "1",
         )
-        # The source Delayer references the Wire's output-side point 4.
-        build.blocks[source_indexes[0]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-        ])
+        # Delayers retain their one parent connection (Base/incoming Wire).
+        # The Wire records the source Delayer and pixel endpoint itself.
         _connect_splitter_input_to_wire(build, endpoint, wire_index)
         return [wire_index]
 
@@ -355,11 +346,8 @@ def _connect_pixel_sources(
             left_index, left_point,
             gate_index, GATE_OR_POINT_INPUT_A,
         )
-        # Reciprocal connections refer to the Wire's left/right endpoints.
-        if build.blocks[left_index].block_type == "Delayer":
-            build.blocks[left_index].connections.append([
-                TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-            ])
+        # Delayers retain their single parent connection; the Wire stores
+        # both endpoint references, so no reciprocal entry is appended.
         # Right source -> Wire -> Gate-OR InputB
         right_tipo = get_source_tipo_local(right_index)
         right_point = get_source_output_point(right_index)
@@ -368,11 +356,6 @@ def _connect_pixel_sources(
             right_index, right_point,
             gate_index, GATE_OR_POINT_INPUT_B,
         )
-        # Reciprocal connections refer to the Wire's left/right endpoints.
-        if build.blocks[right_index].block_type == "Delayer":
-            build.blocks[right_index].connections.append([
-                TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-            ])
         return gate_index
 
     root_index = resolve(len(or_tree) - 1)
@@ -414,7 +397,20 @@ def build_signal_network(
     if timeline_delayer_indexes:
         delayer_indexes = list(timeline_delayer_indexes)
     else:
-        delayer_indexes = _add_delayers(build, frame_durations)
+        base_index = next(
+            (
+                index for index, block in enumerate(build.blocks)
+                if block.block_type == "Base"
+            ),
+            None,
+        )
+        if base_index is None:
+            raise ValueError(
+                "A Base block is required to create the animation timeline"
+            )
+        delayer_indexes = build_animation_timeline(
+            build, frame_durations, base_index=base_index
+        )
 
     # Flatten all (pixel, color) combinations into a list of logical trees to build
     # Each entry: (pixel_uuid, color, source_delayer_indexes)
@@ -470,9 +466,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             if not isinstance(local_type, str) or not isinstance(parent_point, str):
                 errors.append(f"block {block_index}: non-string connection IDs")
 
-    # A Wire must be referenced by both blocks it connects. Checking only
-    # the Wire's own parent indices misses the common failure where objects
-    # are exported but their reciprocal connections were never written.
+    # A Wire records both endpoint blocks. Validate reciprocal entries only
+    # for block types that store them (Splitter_3 and Wire); Delayers keep a
+    # single parent connection, while Gate-OR blocks need no reciprocal entry.
     for wire_index, wire in enumerate(build.blocks):
         if wire.block_type != "Wire":
             continue
@@ -489,9 +485,10 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             if not isinstance(endpoint_index, int) or not 1 <= endpoint_index <= len(build.blocks):
                 continue
             connected_block = build.blocks[endpoint_index - 1]
-            # Gate-OR blocks in the in-game examples keep their connections
-            # empty; Delayers and Splitter_3 store the reciprocal Wire entry.
-            if connected_block.block_type not in {"Delayer", "Splitter_3", "Wire"}:
+            # Gate-OR blocks and Delayers do not store reciprocal entries for
+            # every Wire. Delayers have one parent connection; the Wire itself
+            # records both endpoints. Splitter_3 and Wire store reciprocals.
+            if connected_block.block_type not in {"Splitter_3", "Wire"}:
                 continue
             if not any(
                 len(reciprocal) == 3 and reciprocal[2] == wire_index + 1
@@ -502,7 +499,12 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                     "does not reference this Wire"
                 )
 
-    for block in build.blocks:
+    for block_index, block in enumerate(build.blocks):
+        if block.block_type == "Delayer" and len(block.connections) != 1:
+            errors.append(
+                f"Delayer {block_index + 1}: expected exactly one connection, "
+                f"found {len(block.connections)}"
+            )
         if block.block_type in {"Gate-OR", "Wire", "Delayer"}:
             for connection in block.connections:
                 if any(value in {"InputA", "InputB", "Output", "Input"} for value in connection):
