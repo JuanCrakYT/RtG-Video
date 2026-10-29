@@ -469,6 +469,34 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             if not isinstance(local_type, str) or not isinstance(parent_point, str):
                 errors.append(f"block {block_index}: non-string connection IDs")
 
+    # A Wire must be referenced by both blocks it connects. Checking only
+    # the Wire's own parent indices misses the common failure where objects
+    # are exported but their reciprocal connections were never written.
+    for wire_index, wire in enumerate(build.blocks):
+        if wire.block_type != "Wire":
+            continue
+        if len(wire.connections) != 2:
+            errors.append(
+                f"Wire {wire_index + 1}: expected exactly 2 endpoint connections, "
+                f"found {len(wire.connections)}"
+            )
+            continue
+        for endpoint in wire.connections:
+            if len(endpoint) != 3:
+                continue
+            endpoint_index = endpoint[2]
+            if not isinstance(endpoint_index, int) or not 1 <= endpoint_index <= len(build.blocks):
+                continue
+            connected_block = build.blocks[endpoint_index - 1]
+            if not any(
+                len(reciprocal) == 3 and reciprocal[2] == wire_index + 1
+                for reciprocal in connected_block.connections
+            ):
+                errors.append(
+                    f"Wire {wire_index + 1}: endpoint block {endpoint_index} "
+                    "does not reference this Wire"
+                )
+
     for block in build.blocks:
         if block.block_type in {"Gate-OR", "Wire", "Delayer"}:
             for connection in block.connections:
