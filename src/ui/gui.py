@@ -1858,13 +1858,13 @@ class RtGDisplayGUI:
             self._showerror("Error", f"Failed to copy: {e}")
 
     def _on_copy_base64(self):
-        """Encode the latest display JSON, save it, and copy it to the clipboard."""
+        """Compact the latest display JSON, save it, and copy it to the clipboard."""
         try:
             encoded_json = encode_latest_display(self.generated_display_path)
             self.root.clipboard_clear()
             self.root.clipboard_append(encoded_json)
             self._play_sound("notification.mp3")
-            self._showinfo("Copied", "Base64 saved to output/base64.txt and copied to clipboard!")
+            self._showinfo("Copied", "Single-line JSON saved to output/base64.txt and output/base64.json, and copied to clipboard!")
         except Exception as error:
             self._showerror("Base64 failed", str(error))
     
