@@ -66,7 +66,6 @@ print(f"\n=== TIMELINE ===")
 timeline_delayer_indexes = build_animation_timeline(
     matrix.build,
     [frame.duration for frame in sequence.frames],
-    start_source_index=start_button_index,
 )
 print(f"Timeline delayer indexes (0-based): {timeline_delayer_indexes}")
 print(f"Blocks after timeline: {len(matrix.build.blocks)}")
