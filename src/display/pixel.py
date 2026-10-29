@@ -78,10 +78,13 @@ class Pixel:
                 f"Pixel {self.uuid} Splitter_3 has no connections to resolve"
             )
 
-        input_point = splitter.connections[0][0]
+        # A connection is [TipoLocal, PuntoPadre/UUID, IndicePadre].
+        # TipoLocal identifies the connected local block type; it is NOT a
+        # connection point. The point identifier is the second field.
+        input_point = splitter.connections[0][1]
         if not isinstance(input_point, str):
             raise ValueError(
-                f"Pixel {self.uuid} Splitter_3 input point must be numeric"
+                f"Pixel {self.uuid} Splitter_3 input point must be a string"
             )
         return global_index - 1, input_point
 
