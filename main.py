@@ -214,6 +214,12 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             int(settings["width"]),
             int(settings["height"]),
             palette,
+            color_frames=color_frames,
+            frame_duration=duration,
+        )
+        export_analysis_json(
+            analysis,
+            str(Path(settings.get("output_dir", "output")) / "data.json"),
         )
         usage = analyze_pixel_color_usage(color_frames)
         pixel_palettes = {
@@ -264,10 +270,16 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
         report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
         
         report(GenerationStage.TIMELINE, "active", 75, 100, f"Construyendo timeline ({len(sequence.frames)} frames)...")
+        last_frame_is_black = bool(color_frames) and all(
+            tuple(color) == BLACK
+            for row in color_frames[-1]
+            for color in row
+        )
         timeline_delayer_indexes = build_animation_timeline(
             matrix.build,
             [frame.duration for frame in sequence.frames],
             base_index=matrix.base_index,
+            omit_last_frame=last_frame_is_black,
         )
         report_blocks(len(matrix.build))
         report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
@@ -461,9 +473,15 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
     sequence = builder.build()
     
     report(GenerationStage.TIMELINE, "active", len(colors), len(colors), f"Construyendo timeline ({len(sequence.frames)} frames)...")
+    last_frame_is_black = bool(color_frames) and all(
+        tuple(color) == BLACK
+        for row in color_frames[-1]
+        for color in row
+    )
     timeline_delayer_indexes = build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
+        omit_last_frame=last_frame_is_black,
     )
     report_blocks(len(matrix.build))
     report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
@@ -548,7 +566,16 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     
     report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
     analysis = analyze_video_with_gate_or_planning(
-        settings["video"], settings["width"], settings["height"], palette
+        settings["video"],
+        settings["width"],
+        settings["height"],
+        palette,
+        color_frames=color_frames,
+        frame_duration=duration,
+    )
+    export_analysis_json(
+        analysis,
+        str(Path(settings.get("output_dir", "output")) / "data.json"),
     )
     usage = analyze_pixel_color_usage(color_frames)
     pixel_palettes = {
