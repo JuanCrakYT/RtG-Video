@@ -181,7 +181,7 @@ def build_animation_timeline(
             f"{build.blocks[base_index].block_type}, not Base"
         )
     build.blocks[delayer_indexes[0]].connections.append([
-        TIPOLOCAL_DELAYER, BASE_POINT_LEFT, to_rtg_index(base_index)
+        TIPOLOCAL_DELAYER, BASE_POINT_TOP, to_rtg_index(base_index)
     ])
 
     # Create subsequent Delayers, each connected via a Wire from previous Delayer
