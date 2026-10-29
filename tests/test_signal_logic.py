@@ -210,7 +210,20 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
     # Reuse the Splitter input for the Wire; do not leave the old parent
     # connection and append a second connection to the same input.
     assert len(splitter.connections) == 4
-    assert splitter.connections[0] == ["3", "4", len(build.blocks) - len(wires) + len(wires)]
+    last_wire_index = build.blocks.index(wires[-1]) + 1
+    assert splitter.connections[0] == ["3", "4", last_wire_index]
+
+    # Every endpoint named by a generated Wire must point back to that Wire.
+    for wire_index, wire in enumerate(build.blocks):
+        if wire.block_type != "Wire":
+            continue
+        for connection in wire.connections:
+            endpoint_block = build.blocks[connection[2] - 1]
+            assert any(
+                reciprocal[2] == wire_index + 1
+                for reciprocal in endpoint_block.connections
+                if len(reciprocal) == 3
+            )
 
 
 def test_pixel_with_three_frames_uses_one_balanced_or_tree():
