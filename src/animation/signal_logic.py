@@ -397,7 +397,20 @@ def build_signal_network(
     if timeline_delayer_indexes:
         delayer_indexes = list(timeline_delayer_indexes)
     else:
-        delayer_indexes = _add_delayers(build, frame_durations)
+        base_index = next(
+            (
+                index for index, block in enumerate(build.blocks)
+                if block.block_type == "Base"
+            ),
+            None,
+        )
+        if base_index is None:
+            raise ValueError(
+                "A Base block is required to create the animation timeline"
+            )
+        delayer_indexes = build_animation_timeline(
+            build, frame_durations, base_index=base_index
+        )
 
     # Flatten all (pixel, color) combinations into a list of logical trees to build
     # Each entry: (pixel_uuid, color, source_delayer_indexes)
@@ -487,9 +500,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                 )
 
     for block_index, block in enumerate(build.blocks):
-        if block.block_type == "Delayer" and len(block.connections) > 1:
+        if block.block_type == "Delayer" and len(block.connections) != 1:
             errors.append(
-                f"Delayer {block_index + 1}: expected at most one connection, "
+                f"Delayer {block_index + 1}: expected exactly one connection, "
                 f"found {len(block.connections)}"
             )
         if block.block_type in {"Gate-OR", "Wire", "Delayer"}:
