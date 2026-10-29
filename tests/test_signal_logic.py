@@ -89,32 +89,29 @@ def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     assert all(uuid in base_attachments for uuid in button_uuids)
     assert all(base_attachments[uuid]["cframe"][:3] == [0.0, 0.0, 0.0] for uuid in button_uuids)
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
-    # First Delayer attaches to Base through an ordinary numeric point ID.
-    assert build.blocks[delayer_indexes[0]].connections[0] == [
-        "2", "5", base_index + 1,
+
+    wire_indexes = [
+        index for index, block in enumerate(build.blocks)
+        if block.block_type == "Wire"
     ]
-    assert build.blocks[delayer_indexes[0]].connections[1] == [
-        "2", "4", wire0_index + 1,
+    assert len(wire_indexes) == 2
+    wire0_index, wire1_index = wire_indexes
+
+    # Each Delayer stores exactly one connection: the first to Base, and
+    # each later Delayer to the Wire that feeds it.
+    assert build.blocks[delayer_indexes[0]].connections == [
+        ["2", "5", base_index + 1],
     ]
     assert build.blocks[delayer_indexes[1]].connections == [
-        ["2", "2", wire0_index + 1],
-        ["2", "4", wire1_index + 1],
+        ["2", "4", wire0_index + 1],
     ]
     assert build.blocks[delayer_indexes[2]].connections == [
-        ["2", "2", wire1_index + 1],
+        ["2", "4", wire1_index + 1],
     ]
+    assert all(len(build.blocks[index].connections) == 1 for index in delayer_indexes)
 
-    wires = [block for block in build.blocks if block.block_type == "Wire"]
-    # For 3 frames: 2 inter-Delayer Wires (N-1)
-    assert len(wires) == 2
-    # All Wires have exactly 2 connections
-    assert all(len(wire.connections) == 2 for wire in wires)
-    # Wire connections use fixed "3" (input) and "1" (output)
-    for wire in wires:
-        assert wire.connections[0][0] == "3"  # Wire input side
-        assert wire.connections[1][0] == "1"  # Wire output side
-
-    # In in-game builds, both Wire endpoints point to Delayer point 1.
+    # Each Wire records both neighboring Delayers; the previous Delayer does
+    # not receive a second connection to its outgoing Wire.
     assert build.blocks[wire0_index].connections == [
         ["3", "1", delayer_indexes[0] + 1],
         ["1", "1", delayer_indexes[1] + 1],
