@@ -67,7 +67,7 @@ def _frame_active_to_pixel_color(
     return pixel_color_frames
 
 
-def test_start_button_uses_base_physical_and_output_connections():
+def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     build = RtGBuild()
     base_index = build.create_base()
 
