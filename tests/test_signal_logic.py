@@ -91,7 +91,7 @@ def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
     # First Delayer attaches to Base through an ordinary numeric point ID.
     assert build.blocks[delayer_indexes[0]].connections[0] == [
-        "2", "1", base_index + 1,
+        "2", "5", base_index + 1,
     ]
     assert build.blocks[delayer_indexes[0]].connections[1] == [
         "2", "4", wire0_index + 1,
