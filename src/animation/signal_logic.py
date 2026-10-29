@@ -112,6 +112,30 @@ def _wire_between(
     return build.add_block(wire)
 
 
+def _connect_splitter_input_to_wire(
+    build: RtGBuild,
+    endpoint: PixelSignalEndpoint,
+    wire_index: int,
+) -> None:
+    """Replace the Splitter_3 input's previous parent with its signal Wire.
+
+    The Splitter_3 input must reference the Wire itself. Keeping the old
+    parent connection and appending another one leaves two parents on the
+    same input and can make RtG reject the build.
+    """
+    splitter = build.blocks[endpoint.block_index]
+    if not splitter.connections:
+        raise ValueError(
+            f"Splitter_3 at block {endpoint.block_index} has no input connection"
+        )
+    # The first connection in the pixel template is the Splitter_3 input.
+    splitter.connections[0] = [
+        TIPOLOCAL_SPLITTER,
+        WIRE_POINT_RIGHT,
+        to_rtg_index(wire_index),
+    ]
+
+
 def _add_delayers(
     build: RtGBuild,
     frame_durations: Sequence[float],
@@ -290,9 +314,7 @@ def _connect_pixel_sources(
         build.blocks[source_indexes[0]].connections.append([
             TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index)
         ])
-        build.blocks[endpoint.block_index].connections.append([
-            TIPOLOCAL_SPLITTER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-        ])
+        _connect_splitter_input_to_wire(build, endpoint, wire_index)
         return [wire_index]
 
     # Convert to sets for O(1) lookup
@@ -360,9 +382,7 @@ def _connect_pixel_sources(
     build.blocks[root_index].connections.append([
         TIPOLOCAL_GATE_OR, WIRE_POINT_LEFT, to_rtg_index(wire_index)
     ])
-    build.blocks[endpoint.block_index].connections.append([
-        TIPOLOCAL_SPLITTER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-    ])
+    _connect_splitter_input_to_wire(build, endpoint, wire_index)
     return []
 
 
