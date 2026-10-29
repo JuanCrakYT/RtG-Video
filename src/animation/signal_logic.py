@@ -466,9 +466,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             if not isinstance(local_type, str) or not isinstance(parent_point, str):
                 errors.append(f"block {block_index}: non-string connection IDs")
 
-    # A Wire must be referenced by both blocks it connects. Checking only
-    # the Wire's own parent indices misses the common failure where objects
-    # are exported but their reciprocal connections were never written.
+    # A Wire records both endpoint blocks. Validate reciprocal entries only
+    # for block types that store them (Splitter_3 and Wire); Delayers keep a
+    # single parent connection, while Gate-OR blocks need no reciprocal entry.
     for wire_index, wire in enumerate(build.blocks):
         if wire.block_type != "Wire":
             continue
