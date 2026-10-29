@@ -640,7 +640,7 @@ class RtGDisplayGUI:
             self._slider_sound_suppressed = changed
             slider.set(input_value)
             if changed:
-                self._play_sound("tap.mp3")
+                self._play_sound("notification.mp3")
             return "break"
 
         value_widget.bind("<Return>", on_value_confirm)
@@ -769,11 +769,11 @@ class RtGDisplayGUI:
             entry = tk.Entry(field_frame, width=5, justify=tk.CENTER)
             entry.insert(0, "255")
             entry.pack(pady=(4, 0))
-            entry.bind("<ButtonPress-1>", lambda _event: self._play_sound("tap.mp3"))
+            entry.bind("<ButtonPress-1>", lambda _event: self._play_sound("notification.mp3"))
             fields[channel] = entry
 
         def choose_custom_color():
-            self._play_sound("tap.mp3")
+            self._play_sound("notification.mp3")
             selected = colorchooser.askcolor(parent=dialog, title="Custom color")
             if selected[0] is None:
                 return
@@ -1866,7 +1866,7 @@ class RtGDisplayGUI:
             self.root.clipboard_clear()
             self.root.clipboard_append(encoded_json)
             self._play_sound("notification.mp3")
-            self._showinfo("Copied", "Base64 copied and saved to output/base64.txt; compact JSON saved to output/base64.json.")
+            self._showinfo("Copied", "Base64 copied and saved to output/base64.txt; RtG JSON saved to output/base64.json.")
         except Exception as error:
             self._showerror("Base64 failed", str(error))
     
