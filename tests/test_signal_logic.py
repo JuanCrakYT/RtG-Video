@@ -234,9 +234,9 @@ def test_one_pixel_on_off_on_uses_one_or_and_real_splitter_input():
             continue
         for connection in wire.connections:
             endpoint_block = build.blocks[connection[2] - 1]
-            if endpoint_block.block_type == "Gate-OR":
-                # In-game Gate-OR examples are referenced by Wires but keep
-                # their own connections list empty.
+            if endpoint_block.block_type in {"Gate-OR", "Delayer"}:
+                # Gate-ORs and Delayers do not store reciprocal entries for
+                # every Wire. A Delayer keeps only its parent connection.
                 continue
             assert any(
                 reciprocal[2] == wire_index + 1
