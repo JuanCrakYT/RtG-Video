@@ -242,11 +242,33 @@
         let closing = false;
 
         function parsePalette() {
-            try {
-                return JSON.parse(query.get("palette") || "[[0,0,0],[255,255,255],[128,128,128]]");
-            } catch {
-                throw new Error("The configured palette is invalid");
+            const encodedPalette = query.get("palette");
+            if (!encodedPalette) {
+                throw new Error("No palette was supplied by RtG Video. Reopen the preview from the main app.");
             }
+
+            let palette;
+            try {
+                palette = JSON.parse(encodedPalette);
+            } catch {
+                throw new Error("The configured palette is invalid JSON");
+            }
+
+            if (!Array.isArray(palette) || palette.length === 0) {
+                throw new Error("The configured palette is empty or invalid");
+            }
+            if (palette.some((color) =>
+                !Array.isArray(color)
+                || color.length !== 3
+                || color.some((channel) => !Number.isFinite(Number(channel)))
+            )) {
+                throw new Error("The configured palette must contain RGB triplets");
+            }
+
+            // Keep the actual query palette visible for diagnostics and avoid
+            // silently rendering with the default colors if the parameter is lost.
+            document.body.dataset.previewPalette = JSON.stringify(palette);
+            return palette;
         }
 
         function releaseVideo() {
