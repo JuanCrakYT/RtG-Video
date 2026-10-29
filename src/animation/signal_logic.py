@@ -177,8 +177,6 @@ def build_animation_timeline(
 
     # Reuse the Button created by the generation pipeline. If this helper is
     # used independently (for example by a diagnostic script), create it.
-    if not 0 <= base_index < len(build.blocks):
-        raise ValueError(f"Invalid Base index: {base_index}")
     button_index = next(
         (index for index in range(len(build.blocks) - 1, -1, -1)
          if build.blocks[index].block_type == "Button"),
@@ -310,74 +308,46 @@ def _connect_pixel_sources(
     or_tree: Sequence[GateORInfo],
     physical_map: Mapping[int, int],
 ) -> List[int]:
-    """Connect frame sources to one physical pixel endpoint using pre-built Gate-ORs."""
+    """Connect a pixel to its frame sources and return every created Wire.
+
+    A Delayer keeps exactly one incoming timeline connection. Its output may
+    fan out to multiple independent Wires, one for every pixel/OR input that
+    needs the frame's signal.
+    """
     if not source_indexes:
         return []
 
-    if len(source_indexes) == 1:
-        wire_index = _wire_between(
-            build,
-            source_indexes[0], DELAYER_POINT_OUTPUT,
-            endpoint.block_index, "1",
+    wire_indexes: List[int] = []
+
+    def connect(source_index: int, target_index: int, target_point: str) -> None:
+        wire_indexes.append(
+            _wire_between(build, source_index, "1", target_index, target_point)
         )
-        # Delayers retain their one parent connection (Base/incoming Wire).
-        # The Wire records the source Delayer and pixel endpoint itself.
-        _connect_splitter_input_to_wire(build, endpoint, wire_index)
-        return [wire_index]
 
-    # Convert to sets for O(1) lookup
-    source_index_set = set(source_indexes)
-    gate_or_index_set = set(physical_map.values())
-
-    def get_source_tipo_local(source_index: int) -> str:
-        """Return the correct TipoLocal for a source block index."""
-        if source_index in gate_or_index_set:
-            return TIPOLOCAL_GATE_OR
-        return TIPOLOCAL_DELAYER
-
-    def get_source_output_point(source_index: int) -> str:
-        """Return the correct output point for a source block index."""
-        # Both Delayer and Gate-OR use point "1" for output
-        return "1"
+    if len(source_indexes) == 1:
+        connect(source_indexes[0], endpoint.block_index, "1")
+        _connect_splitter_input_to_wire(build, endpoint, wire_indexes[-1])
+        return wire_indexes
 
     def resolve(node: int) -> int:
         info = or_tree[node]
         if info.is_leaf:
             return source_indexes[info.source_frame]
+
         gate_index = physical_map[node]
         left_index = resolve(info.child_a)
         right_index = resolve(info.child_b)
-        # Left source -> Wire -> Gate-OR InputA
-        left_tipo = get_source_tipo_local(left_index)
-        left_point = get_source_output_point(left_index)
-        wire_index = _wire_between(
-            build,
-            left_index, left_point,
-            gate_index, GATE_OR_POINT_INPUT_A,
-        )
-        # Delayers retain their single parent connection; the Wire stores
-        # both endpoint references, so no reciprocal entry is appended.
-        # Right source -> Wire -> Gate-OR InputB
-        right_tipo = get_source_tipo_local(right_index)
-        right_point = get_source_output_point(right_index)
-        wire_index = _wire_between(
-            build,
-            right_index, right_point,
-            gate_index, GATE_OR_POINT_INPUT_B,
-        )
+
+        # A frame can drive multiple Gate-OR inputs/pixels through separate
+        # Wires. Never add output connections to the Delayer itself.
+        connect(left_index, gate_index, GATE_OR_POINT_INPUT_A)
+        connect(right_index, gate_index, GATE_OR_POINT_INPUT_B)
         return gate_index
 
     root_index = resolve(len(or_tree) - 1)
-    # Root Gate-OR output -> Wire -> Pixel endpoint (Splitter_3)
-    wire_index = _wire_between(
-        build,
-        root_index, GATE_OR_POINT_OUTPUT,
-        endpoint.block_index, "1",
-    )
-    # Gate-OR blocks in in-game examples do not store reciprocal Wire entries.
-    _connect_splitter_input_to_wire(build, endpoint, wire_index)
-    return []
-
+    connect(root_index, endpoint.block_index, "1")
+    _connect_splitter_input_to_wire(build, endpoint, wire_indexes[-1])
+    return wire_indexes
 
 def build_signal_network(
     build: RtGBuild,
@@ -394,6 +364,8 @@ def build_signal_network(
     
     Each (pixel, color) combination gets its own independent OR tree.
     This is different from the old architecture which grouped by pixel only.
+    A frame Delayer may fan out to multiple independent Wire outputs; it
+    never needs more than its single incoming timeline connection.
 
     ``gate_or_pool`` should contain the pre-generated physical Gate-OR indexes.
     ``timeline_delayer_indexes`` should contain the Delayer indexes created by
@@ -441,21 +413,26 @@ def build_signal_network(
                 f"Not enough physical Gate-ORs for pixel {pixel_uuid} color {color}: "
                 f"need {len(internal_nodes)}, have {len(pool)}"
             )
+        invalid_sources = [
+            source_index for source_index in source_indexes
+            if source_index not in delayer_indexes
+        ]
+        if invalid_sources:
+            raise ValueError(
+                f"Pixel {pixel_uuid} color {color} references blocks that are "
+                f"not timeline Delayers: {invalid_sources}"
+            )
         physical_map = {node_index: pool.pop(0) for node_index in internal_nodes}
         endpoint = pixel_inputs[pixel_uuid]
-        tree_allocations.append((pixel_uuid, color, or_tree, physical_map, endpoint))
+        tree_allocations.append(
+            (pixel_uuid, color, list(source_indexes), or_tree, physical_map, endpoint)
+        )
 
-    # Build all trees
-    for pixel_uuid, color, source_indexes, or_tree, physical_map, endpoint in [
-        (p, c, next(s for p2, c2, s in logical_trees if p2 == p and c2 == c), ot, pm, ep)
-        for p, c, ot, pm, ep in tree_allocations
-    ]:
+    # Build every tree independently. A Delayer may appear in multiple trees,
+    # which intentionally creates multiple output Wires from that frame.
+    for _, _, source_indexes, or_tree, physical_map, endpoint in tree_allocations:
         _connect_pixel_sources(
-            build,
-            source_indexes,
-            endpoint,
-            or_tree,
-            physical_map,
+            build, source_indexes, endpoint, or_tree, physical_map
         )
 
     return pixel_color_frames

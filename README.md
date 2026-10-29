@@ -265,13 +265,6 @@ fallback. Its OpenCV, Tkinter, MoviePy, and Pygame paths have not been
 removed. The files under `tmp/` remain the performance laboratory and are not
 runtime dependencies.
 
-Node.js 18 or newer is required for the production module tests:
-
-```bash
-cd tests/js
-npm test
-```
-
 ### Experimental benchmark results
 
 The earlier laboratory numbers remain a separate **Synthetic frame benchmark**:
@@ -315,11 +308,7 @@ OpenCV produces small color differences around palette thresholds. This is a
 codec/decode-path limitation, not an ignored mismatch. A lossless browser-
 compatible source is still needed for a strict decoded-video checksum claim.
 
-Playback QA covers the real `<video>` path, pause/resume, callback fallback,
-one pending callback, and close cleanup in the migrated tests and the retained
-`tmp/` laboratory. The browser path is now the default GUI Preview; Python is
-the temporary fallback. A lossless cross-runtime equivalence fixture, broader
-browser/platform testing, and reliable memory observation remain future work.
+The browser path is now the default GUI Preview; Python is the temporary fallback. A lossless cross-runtime equivalence fixture, broader browser/platform testing, and reliable memory observation remain future work.
 
 The old visual experiment remains available through `tmp/preview.html`; it is
 not the production entry point.
@@ -705,32 +694,9 @@ examples/bad_apple/
 
 ## Testing
 
-Tests are located in:
-
-```md
-tests/
-```
-
-Run the core test suite with:
-
-```bash
-python tests/test_core.py
-```
-
-Individual tests can also be executed directly:
-
-```bash
-python tests/test_canvas.py
-python tests/test_output_sync.py
-python tests/test_signal_logic.py
-```
-
-Additional GUI verification scripts are available at the repository root:
-
-```bash
-python test_gui_features.py
-python verify_gui_elements.py
-```
+The repository's `testing/` directory is retained for manual test assets and
+video samples. Temporary automated test suites and one-off diagnostic scripts
+are not part of the production repository.
 
 ## Current Status
 
