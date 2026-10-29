@@ -81,13 +81,13 @@ def test_start_button_and_timeline_delayers_connect_to_base_and_wires():
     button = build.blocks[button_index]
     assert sum(block.block_type == "Button" for block in build.blocks) == 1
     assert button.properties == {"RGB": [255, 0, 0]}
-    assert len(button.connections) == 2
-    base_attachments = build.blocks[base_index].properties["EphemeralAttachments"]
-    button_uuids = [connection[1] for connection in button.connections]
-    assert all(connection[0] == "1" and connection[2] == base_index + 1 for connection in button.connections)
-    assert len(set(button_uuids)) == 2
-    assert all(uuid in base_attachments for uuid in button_uuids)
-    assert all(base_attachments[uuid]["cframe"][:3] == [0.0, 0.0, 0.0] for uuid in button_uuids)
+    assert button.connections == [
+        ["1", "2", base_index + 1],
+        ["3", "4", base_index + 1],
+    ]
+    assert build.blocks[delayer_indexes[0]].connections == [
+        ["2", "2", button_index + 1],
+    ]
     assert [build.blocks[index].properties["Frame"] for index in delayer_indexes] == [0, 1, 2]
 
     wire_indexes = [
