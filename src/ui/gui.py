@@ -1222,16 +1222,16 @@ class RtGDisplayGUI:
                 self.analyze_total_btn.pack_forget()
                 self._play_sound("notification.mp3")
                 report = (
-                    "Video analysis completed (nothing was saved).\\n\\n"
+                    "Video analysis completed (nothing was saved).\n\n"
                     f'Canvas: {result["width"]} × {result["height"]} '
-                    f'({result["canvas_pixels"]:,} coordinates)\\n'
-                    f'Frames: {result["frames"]:,}\\n'
-                    f'Blocks in in-memory build: {result["blocks"]:,}\\n'
-                    f'Physical pixel layers: {result["physical_pixel_layers"]:,}\\n'
-                    f'Positions active at least once: {result["active_positions"]:,}\\n'
-                    f'Active pixel appearances across all frames: {result["active_pixel_appearances"]:,}\\n'
-                    f'Maximum active pixels in one frame: {result["max_active_pixels_per_frame"]:,}\\n'
-                    f'Visible colors used: {result["colors"]:,}\\n'
+                    f'({result["canvas_pixels"]:,} coordinates)\n'
+                    f'Frames: {result["frames"]:,}\n'
+                    f'Blocks in in-memory build: {result["blocks"]:,}\n'
+                    f'Physical pixel layers: {result["physical_pixel_layers"]:,}\n'
+                    f'Positions active at least once: {result["active_positions"]:,}\n'
+                    f'Active pixel appearances across all frames: {result["active_pixel_appearances"]:,}\n'
+                    f'Maximum active pixels in one frame: {result["max_active_pixels_per_frame"]:,}\n'
+                    f'Visible colors used: {result["colors"]:,}\n'
                     f'Gate-OR blocks planned: {result["gate_ors"]:,}'
                 )
                 self._showinfo("Video Analysis", report)
