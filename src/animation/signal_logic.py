@@ -184,7 +184,7 @@ def build_animation_timeline(
         wire_index = _wire_between(
             build,
             delayer_indexes[frame_index - 1], DELAYER_POINT_OUTPUT,
-            delayer_indexes[frame_index], WIRE_POINT_RIGHT,
+            delayer_indexes[frame_index], DELAYER_POINT_INPUT,
         )
         # Both Delayers must reference the corresponding Wire endpoint.
         # In game builds the source Delayer attaches to Wire point 4,
