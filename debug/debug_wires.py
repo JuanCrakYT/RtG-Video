@@ -38,7 +38,7 @@ gate_or_count = max(
 )
 
 gate_or_indexes = add_physical_gate_or_table(matrix.build, matrix.base_index, gate_or_count)
-build_animation_timeline(matrix.build, [frame.duration for frame in sequence.frames], start_source_index=start_button_index)
+build_animation_timeline(matrix.build, [frame.duration for frame in sequence.frames])
 build_signal_network(
     matrix.build,
     {index: frame.get_active_pixels() for index, frame in enumerate(sequence.frames)},
