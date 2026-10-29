@@ -114,6 +114,16 @@ def test_start_button_uses_base_physical_and_output_connections():
         assert wire.connections[0][0] == "3"  # Wire input side
         assert wire.connections[1][0] == "1"  # Wire output side
 
+    # In in-game builds, both Wire endpoints point to Delayer point 1.
+    assert build.blocks[wire0_index].connections == [
+        ["3", "1", delayer_indexes[0] + 1],
+        ["1", "1", delayer_indexes[1] + 1],
+    ]
+    assert build.blocks[wire1_index].connections == [
+        ["3", "1", delayer_indexes[1] + 1],
+        ["1", "1", delayer_indexes[2] + 1],
+    ]
+
 
 def test_physical_gate_or_table_uses_mounting_connections_only():
     build = RtGBuild()
