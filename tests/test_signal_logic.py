@@ -15,7 +15,7 @@ from src.animation.signal_logic import (
 from src.rtg.blocks import RtGBlock, RtGBuild
 from src.rtg.format import load_pixel_template_from_file
 from src.display.matrix import MatrixBuilder
-from src.display.pixel import PixelTemplate
+from src.display.pixel import Pixel, PixelTemplate
 
 
 def _make_display_endpoints():
@@ -32,7 +32,7 @@ def _make_display_endpoints():
                 ["9", "4", 1],
             ])
         )
-        endpoints[f"pixel_{pixel_number}"] = PixelSignalEndpoint(block_index, "3")
+        endpoints[f"pixel_{pixel_number}"] = PixelSignalEndpoint(block_index, "1")
     return build, endpoints
 
 
@@ -395,24 +395,22 @@ def test_real_pixel_parent_references_are_one_based():
             assert 1 <= connection[2] <= len(matrix.build.blocks)
 
 
-def test_splitter_endpoint_point_is_derived_from_template_connection():
+def test_splitter_endpoint_uses_point_field_not_tipo_local():
     build = RtGBuild()
     build.create_base()
-    splitter_index = build.add_block(
-        RtGBlock("Splitter_3", connections=[["8", "4", 1]])
+    splitter = RtGBlock("Splitter_3", connections=[["3", "4", 1]])
+    splitter_index = build.add_block(splitter)
+    pixel = Pixel(
+        x=0,
+        y=0,
+        blocks=[splitter],
+        uuid="pixel-template-port",
+        block_indices={1: splitter_index + 1},
     )
-    pixel = type(
-        "PixelStub",
-        (),
-        {
-            "uuid": "pixel-template-port",
-            "get_signal_endpoint": lambda self: (splitter_index, "8"),
-        },
-    )()
 
     endpoint = resolve_pixel_inputs([pixel])[pixel.uuid]
     assert endpoint.block_index == splitter_index
-    assert endpoint.point_id == "8"
+    assert endpoint.point_id == "4"
 
 
 def test_real_pixel_asset_generates_balanced_tree_counts():
@@ -426,7 +424,7 @@ def test_real_pixel_asset_generates_balanced_tree_counts():
         index for index, block in enumerate(matrix.build.blocks)
         if block.block_type == "Splitter_3"
     )
-    assert endpoints[pixel.uuid].point_id == "3"
+    assert endpoints[pixel.uuid].point_id == "1"
 
     # Build timeline first to get delayer indexes
     build_animation_timeline(matrix.build, [0.1, 0.1, 0.1])
