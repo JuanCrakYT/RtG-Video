@@ -140,13 +140,15 @@ def _add_delayers(
 ) -> List[int]:
     """Create exactly one configured Delayer for each logical frame."""
     indexes = []
+    accumulated_delay = 0.0
     for frame_index, duration in enumerate(frame_durations):
+        accumulated_delay += float(duration)
         delayer = RtGBlock(
             "Delayer",
             connections=[],
             properties={
                 "DelayDeactivation": True,
-                "Delay": duration,
+                "Delay": accumulated_delay,
                 "RGB": [21, 95, 163],
                 "Frame": frame_index,
             },
@@ -159,14 +161,17 @@ def build_animation_timeline(
     build: RtGBuild,
     frame_durations: Sequence[float],
     base_index: int = 0,
+    omit_last_frame: bool = False,
 ) -> List[int]:
     """Append one Delayer per frame, starting from the Base-mounted Button.
 
     Every Delayer stores exactly one connection. Frame 0 receives the Button
     output; later frames receive their incoming timeline Wire.
     """
+    if omit_last_frame:
+        frame_durations = frame_durations[:-1]
     if not frame_durations:
-        raise ValueError("At least one frame duration is required")
+        return []
     if not 0 <= base_index < len(build.blocks):
         raise ValueError(f"Invalid Base index: {base_index}")
     if build.blocks[base_index].block_type != "Base":
@@ -374,6 +379,12 @@ def build_signal_network(
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
+    if not timeline_delayer_indexes and not any(
+        source_indexes
+        for color_map in pixel_color_frames.values()
+        for source_indexes in color_map.values()
+    ):
+        return pixel_color_frames
 
     if timeline_delayer_indexes:
         delayer_indexes = list(timeline_delayer_indexes)
