@@ -36,7 +36,7 @@ BASE_POINT_FRONT = "4"
 BASE_POINT_TOP = "5"
 BASE_POINT_BOTTOM = "6"
 
-BUTTON_POINT_OUTPUT = "1"
+BUTTON_POINT_OUTPUT = "2"
 
 WIRE_POINT_LEFT = "2"
 WIRE_POINT_RIGHT = "4"
@@ -46,8 +46,8 @@ GATE_OR_POINT_INPUT_A = "2"
 GATE_OR_POINT_INPUT_B = "3"
 
 # Delayer points (from functional builds and format)
-DELAYER_POINT_OUTPUT = "1"   # Output to Wire/Button
-DELAYER_POINT_WIRE_IN = "4"  # Input from Wire (Wire's RIGHT point)
+DELAYER_POINT_OUTPUT = "1"   # Wire endpoint attaches to Delayer point 1
+DELAYER_POINT_INPUT = "1"    # Wire endpoint attaches to Delayer point 1
 
 
 @dataclass(frozen=True)
@@ -187,11 +187,13 @@ def build_animation_timeline(
             delayer_indexes[frame_index], WIRE_POINT_RIGHT,
         )
         # Both Delayers must reference the corresponding Wire endpoint.
+        # In game builds the source Delayer attaches to Wire point 4,
+        # while the receiving Delayer attaches to Wire point 2.
         build.blocks[delayer_indexes[frame_index - 1]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index),
+            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
         ])
         build.blocks[delayer_indexes[frame_index]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index),
+            TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index),
         ])
 
     return delayer_indexes
@@ -308,11 +310,11 @@ def _connect_pixel_sources(
         wire_index = _wire_between(
             build,
             source_indexes[0], DELAYER_POINT_OUTPUT,
-            endpoint.block_index, endpoint.point_id,
+            endpoint.block_index, "1",
         )
-        # Reciprocal endpoint connections refer to the corresponding Wire points.
+        # The source Delayer references the Wire's output-side point 4.
         build.blocks[source_indexes[0]].connections.append([
-            TIPOLOCAL_DELAYER, WIRE_POINT_LEFT, to_rtg_index(wire_index)
+            TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
         ])
         _connect_splitter_input_to_wire(build, endpoint, wire_index)
         return [wire_index]
@@ -348,12 +350,10 @@ def _connect_pixel_sources(
             gate_index, GATE_OR_POINT_INPUT_A,
         )
         # Reciprocal connections refer to the Wire's left/right endpoints.
-        build.blocks[left_index].connections.append([
-            left_tipo, WIRE_POINT_LEFT, to_rtg_index(wire_index)
-        ])
-        build.blocks[gate_index].connections.append([
-            TIPOLOCAL_GATE_OR, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-        ])
+        if build.blocks[left_index].block_type == "Delayer":
+            build.blocks[left_index].connections.append([
+                TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
+            ])
         # Right source -> Wire -> Gate-OR InputB
         right_tipo = get_source_tipo_local(right_index)
         right_point = get_source_output_point(right_index)
@@ -363,12 +363,10 @@ def _connect_pixel_sources(
             gate_index, GATE_OR_POINT_INPUT_B,
         )
         # Reciprocal connections refer to the Wire's left/right endpoints.
-        build.blocks[right_index].connections.append([
-            right_tipo, WIRE_POINT_LEFT, to_rtg_index(wire_index)
-        ])
-        build.blocks[gate_index].connections.append([
-            TIPOLOCAL_GATE_OR, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
-        ])
+        if build.blocks[right_index].block_type == "Delayer":
+            build.blocks[right_index].connections.append([
+                TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)
+            ])
         return gate_index
 
     root_index = resolve(len(or_tree) - 1)
@@ -376,12 +374,9 @@ def _connect_pixel_sources(
     wire_index = _wire_between(
         build,
         root_index, GATE_OR_POINT_OUTPUT,
-        endpoint.block_index, endpoint.point_id,
+        endpoint.block_index, "1",
     )
-    # Reciprocal endpoints refer to the Wire's left/right points.
-    build.blocks[root_index].connections.append([
-        TIPOLOCAL_GATE_OR, WIRE_POINT_LEFT, to_rtg_index(wire_index)
-    ])
+    # Gate-OR blocks in in-game examples do not store reciprocal Wire entries.
     _connect_splitter_input_to_wire(build, endpoint, wire_index)
     return []
 
@@ -488,6 +483,10 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             if not isinstance(endpoint_index, int) or not 1 <= endpoint_index <= len(build.blocks):
                 continue
             connected_block = build.blocks[endpoint_index - 1]
+            # Gate-OR blocks in the in-game examples keep their connections
+            # empty; Delayers and Splitter_3 store the reciprocal Wire entry.
+            if connected_block.block_type not in {"Delayer", "Splitter_3", "Wire"}:
+                continue
             if not any(
                 len(reciprocal) == 3 and reciprocal[2] == wire_index + 1
                 for reciprocal in connected_block.connections
@@ -511,9 +510,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             continue
         if build.blocks[target_index - 1].block_type == "Delayer":
             target_point = block.connections[1][1]
-            if target_point != "4":
+            if target_point != "1":
                 errors.append(
-                    f"Wire {block_index}: Delayer target must use point 4"
+                    f"Wire {block_index + 1}: Delayer endpoint must use point 1"
                 )
 
     return errors
