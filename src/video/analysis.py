@@ -46,6 +46,8 @@ def analyze_video_with_gate_or_planning(
     width: int,
     height: int,
     palette: Sequence[RGBColor],
+    color_frames: Sequence[Sequence[Sequence[RGBColor]]] = None,
+    frame_duration: float = None,
 ) -> VideoAnalysisResult:
     """
     Analyze video and compute Gate-OR requirements per pixel per color.
@@ -53,7 +55,10 @@ def analyze_video_with_gate_or_planning(
     This does NOT generate the RtG build - it produces an analytical report
     showing exactly what Gate-OR tables are needed for each color at each position.
     """
-    duration, color_frames = analyze_video_colors(video_path, width, height, palette)
+    if color_frames is None:
+        duration, color_frames = analyze_video_colors(video_path, width, height, palette)
+    else:
+        duration = float(frame_duration) if frame_duration is not None else 0.0
     pixel_states = analyze_pixel_states(color_frames)
     
     # Gather all unique colors (excluding BLACK)
