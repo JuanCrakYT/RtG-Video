@@ -128,6 +128,7 @@ class RtGDisplayGUI:
         self.palette_combo = None
         self._sound_cache = {}
         self._slider_sound_suppressed = False
+        self._analysis_request_id = 0
         
         # Build GUI
         self._build_gui()
@@ -848,9 +849,7 @@ class RtGDisplayGUI:
         self.palette_colors = [list(color) for color in normalize_palette(
             self.palette_colors + [selected_color]
         )]
-        self._analyzed_total_objects = None
-        if not self.analyze_total_btn.winfo_manager():
-            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        self._reset_video_analysis()
         self._refresh_palette_combo()
         self._update_output_size()
 
@@ -862,9 +861,7 @@ class RtGDisplayGUI:
             self._showinfo("Required color", "Black is always required in the palette.")
             return
         self.palette_colors.pop(selected_index)
-        self._analyzed_total_objects = None
-        if not self.analyze_total_btn.winfo_manager():
-            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        self._reset_video_analysis()
         self._refresh_palette_combo()
         self._update_output_size()
         self._play_sound("notification.mp3")
@@ -946,6 +943,16 @@ class RtGDisplayGUI:
         )
         self.generate_btn.pack(side=tk.LEFT)
     
+    def _reset_video_analysis(self):
+        """Invalidate stale analysis work and make analysis available again."""
+        self._analysis_request_id = getattr(self, "_analysis_request_id", 0) + 1
+        self._analyzed_total_objects = None
+        self.analyze_total_btn.config(
+            text="Analyze real total", state=tk.NORMAL, bg=self.border_color
+        )
+        if not self.analyze_total_btn.winfo_manager():
+            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+
     def _on_load_video(self):
         """Handle video loading."""
         file_path = filedialog.askopenfilename(
@@ -989,9 +996,7 @@ class RtGDisplayGUI:
         
     def _on_width_changed(self, value: int):
         """Handle width slider change."""
-        self._analyzed_total_objects = None
-        if not self.analyze_total_btn.winfo_manager():
-            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        self._reset_video_analysis()
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
@@ -1004,18 +1009,14 @@ class RtGDisplayGUI:
             return
         self.selected_asset_type = self.asset_combo.get()
         self.pixel_base_object_count = self._load_asset_object_count(self.selected_asset_type)
-        self._analyzed_total_objects = None
-        if not self.analyze_total_btn.winfo_manager():
-            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        self._reset_video_analysis()
         self._update_output_size()
         if self.on_settings_changed:
             self.on_settings_changed({'pixel_template': str(self.asset_templates[self.selected_asset_type])})
     
     def _on_height_changed(self, value: int):
         """Handle height slider change."""
-        self._analyzed_total_objects = None
-        if not self.analyze_total_btn.winfo_manager():
-            self.analyze_total_btn.pack(side=tk.RIGHT, padx=(8, 0))
+        self._reset_video_analysis()
         self._update_output_size()
         if self.on_settings_changed:
             width = getattr(self, 'width_value_slider').get()
@@ -1066,6 +1067,8 @@ class RtGDisplayGUI:
             import threading
 
             result_queue = queue.Queue()
+            self._analysis_request_id += 1
+            analysis_request_id = self._analysis_request_id
             video_path = str(self.loaded_video_path)
             width = int(self.width_value_slider.get())
             height = int(self.height_value_slider.get())
@@ -1135,7 +1138,6 @@ class RtGDisplayGUI:
                     timeline_delayer_indexes = build_animation_timeline(
                         matrix.build,
                         [frame.duration for frame in sequence.frames],
-                        start_source_index=start_button_index,
                     )
 
                     # Map each analyzed coordinate+color to its physical pixel UUID.
@@ -1203,6 +1205,8 @@ class RtGDisplayGUI:
                     result_queue.put(("error", str(exc)))
 
             def check_result():
+                if analysis_request_id != self._analysis_request_id:
+                    return
                 try:
                     status, result = result_queue.get_nowait()
                 except queue.Empty:
