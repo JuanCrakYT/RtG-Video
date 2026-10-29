@@ -160,22 +160,31 @@ def _add_delayers(
 def build_animation_timeline(
     build: RtGBuild,
     frame_durations: Sequence[float],
-    start_source_index: int = 0,
+    base_index: int = 0,
 ) -> List[int]:
     """Append one Delayer per frame in temporal order.
 
     Timeline chain:
-    - First Delayer connects to Start Button at Button's output point (1)
-    - Each later Delayer connects via a Wire from previous Delayer
+    - First Delayer connects to a UUID attachment on Base.
+    - Each later Delayer connects via a Wire from the previous Delayer.
     """
     if not frame_durations:
         raise ValueError("At least one frame duration is required")
 
     delayer_indexes = _add_delayers(build, frame_durations)
 
-    # Connect the first Delayer to the Button's output endpoint.
+    # The first Delayer must attach directly to Base, using a Base UUID
+    # attachment just like other blocks physically mounted to the build.
+    if not 0 <= base_index < len(build.blocks):
+        raise ValueError(f"Invalid Base index: {base_index}")
+    if build.blocks[base_index].block_type != "Base":
+        raise ValueError(
+            f"Timeline Base index {base_index} refers to "
+            f"{build.blocks[base_index].block_type}, not Base"
+        )
+    base_attachment_uuid = _base_attachment(build, base_index)
     build.blocks[delayer_indexes[0]].connections.append([
-        TIPOLOCAL_DELAYER, BUTTON_POINT_OUTPUT, to_rtg_index(start_source_index)
+        TIPOLOCAL_DELAYER, base_attachment_uuid, to_rtg_index(base_index)
     ])
 
     # Create subsequent Delayers, each connected via a Wire from previous Delayer
