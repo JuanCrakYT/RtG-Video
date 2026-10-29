@@ -50,7 +50,6 @@ sequence = builder.build()
 timeline_delayer_indexes = build_animation_timeline(
     matrix.build,
     [frame.duration for frame in sequence.frames],
-    start_source_index=start_button_index,
 )
 
 pixel_inputs = resolve_pixel_inputs(matrix.pixels.values())
