@@ -33,10 +33,13 @@ except ImportError:  # pragma: no cover - optional dependency for preview audio
 
 try:
     from moviepy import VideoFileClip
-except ImportError:  # pragma: no cover - support older MoviePy releases
+except ImportError:  # pragma: no cover - optional dependency for audio extraction
     try:
-        from moviepy.editor import VideoFileClip
-    except ImportError:  # pragma: no cover - optional dependency for audio extraction
+        # MoviePy 1.x exposes VideoFileClip from moviepy.editor; import it
+        # dynamically so Pylance does not flag the optional legacy module.
+        from importlib import import_module
+        VideoFileClip = import_module("moviepy.editor").VideoFileClip
+    except (ImportError, AttributeError):
         VideoFileClip = None
 
 
