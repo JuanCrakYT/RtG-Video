@@ -473,11 +473,8 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
     sequence = builder.build()
     
     report(GenerationStage.TIMELINE, "active", len(colors), len(colors), f"Construyendo timeline ({len(sequence.frames)} frames)...")
-    last_frame_is_black = bool(color_frames) and all(
-        tuple(color) == BLACK
-        for row in color_frames[-1]
-        for color in row
-    )
+    # The demo sequence is defined by `colors`, not analyzed video frames.
+    last_frame_is_black = bool(colors) and colors[-1] == BLACK
     timeline_delayer_indexes = build_animation_timeline(
         matrix.build,
         [frame.duration for frame in sequence.frames],
@@ -801,9 +798,14 @@ def main():
         )
         sys.exit(0 if success else 1)
     elif args.gui_demo:
-        # Import here to avoid issues on headless systems
-        from debug.demo_gui import demo_gui
-        demo_gui()
+        # This optional development demo is not included in every checkout.
+        try:
+            import importlib
+            demo_module = importlib.import_module("debug.demo_gui")
+        except ModuleNotFoundError as error:
+            print(f"GUI demo unavailable: {error}")
+        else:
+            demo_module.demo_gui()
     elif args.cli:
         parser.print_help()
     else:
