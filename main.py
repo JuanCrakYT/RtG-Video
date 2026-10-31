@@ -19,10 +19,7 @@ from src.display.matrix import MatrixBuilder
 from src.animation.frame import FrameBuilder
 from src.animation.sequence import SequenceBuilder
 from src.animation.signal_logic import (
-    add_start_button,
-    add_physical_gate_or_table,
-    build_animation_timeline,
-    build_signal_network,
+    materialize_signal_plan,
     resolve_pixel_inputs,
     validate_signal_connections,
 )
@@ -40,6 +37,7 @@ from src.video.processing import (
 )
 from src.video.analysis import (
     analyze_video_with_gate_or_planning,
+    analyze_color_frames,
     export_analysis_json,
     VideoAnalysisResult,
     ColorFrameUsage,
@@ -209,24 +207,29 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
         report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
         
         report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
+        export_speed = float(settings.get("export_speed", 1.0))
+        if export_speed <= 0:
+            raise ValueError("export_speed must be greater than zero")
+        frame_durations = [duration / export_speed] * len(color_frames)
         analysis = analyze_video_with_gate_or_planning(
             settings["video"],
             int(settings["width"]),
             int(settings["height"]),
             palette,
             color_frames=color_frames,
-            frame_duration=duration,
+            frame_durations=frame_durations,
         )
         export_analysis_json(
             analysis,
             str(Path(settings.get("output_dir", "output")) / "data.json"),
         )
-        usage = analyze_pixel_color_usage(color_frames)
         pixel_palettes = {
-            (x, y): usage.get((x, y), set())
+            (x, y): set()
             for y in range(int(settings["height"]))
             for x in range(int(settings["width"]))
         }
+        for layer in analysis.pixel_layers:
+            pixel_palettes[layer.position].add(layer.color)
         report(GenerationStage.PREPARATION, "completed", 1, 1)
     
     report(GenerationStage.CANVAS, "active", 0, 1, "Creando matriz de píxeles...")
@@ -248,63 +251,19 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
     report(GenerationStage.CANVAS, "completed", 100, 100, f"Canvas {settings['width']}x{settings['height']} creado")
     
     if settings.get("video"):
-        report(GenerationStage.TIMELINE, "active", 0, 1, "Creando botón de inicio...")
-        add_start_button(matrix.build, matrix.base_index)
-        
-        report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
-        export_speed = settings.get("export_speed", 1.0)
-        adjusted_duration = duration / export_speed
-        sequence = sequence_from_color_frames(matrix, adjusted_duration, color_frames)
-        
-        report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios desde análisis de color...")
-        # Use the pre-computed Gate-OR count from analysis (sum of N-1 per pixel+color)
-        gate_or_count = analysis.total_gate_ors_needed
-        
-        report(GenerationStage.GATE_OR, "active", 0, 1, f"Creando tabla física de {gate_or_count} Gate-ORs...")
-        gate_or_indexes = add_physical_gate_or_table(
+        report(GenerationStage.TIMELINE, "active", 25, 100, "Creando secuencia desde el análisis...")
+        sequence = sequence_from_color_frames(matrix, analysis.frame_durations, color_frames)
+        report(GenerationStage.GATE_OR, "active", 0, 1, f"Materializando {analysis.total_gate_ors_needed} Gate-ORs planificados...")
+        report(GenerationStage.SIGNAL_NETWORK, "active", 0, 1, "Materializando conexiones ya verificadas...")
+        materialize_signal_plan(
             matrix.build,
-            matrix.base_index,
-            gate_or_count,
-        )
-        report_blocks(len(matrix.build))
-        report(GenerationStage.GATE_OR, "completed", 1, 1, f"{gate_or_count} Gate-ORs creados")
-        
-        report(GenerationStage.TIMELINE, "active", 75, 100, f"Construyendo timeline ({len(sequence.frames)} frames)...")
-        last_frame_is_black = bool(color_frames) and all(
-            tuple(color) == BLACK
-            for row in color_frames[-1]
-            for color in row
-        )
-        timeline_delayer_indexes = build_animation_timeline(
-            matrix.build,
-            [frame.duration for frame in sequence.frames],
+            analysis,
+            _plan_pixel_endpoints(matrix, analysis),
             base_index=matrix.base_index,
-            omit_last_frame=last_frame_is_black,
         )
         report_blocks(len(matrix.build))
-        report(GenerationStage.TIMELINE, "completed", 100, 100, "Timeline completado")
-        
-        report(GenerationStage.SIGNAL_NETWORK, "active", 0, 1, "Construyendo red de señales por píxel+color...")
-        # Build logical table: pixel_uuid -> color -> list of frame delayer indexes
-        pixel_color_frames = _build_pixel_color_frame_table(
-            matrix, sequence, timeline_delayer_indexes, analysis
-        )
-        total_frames = len(sequence.frames)
-        for i, (pixel_uuid, color_frames_map) in enumerate(pixel_color_frames.items()):
-            if total_frames > 0:
-                report(GenerationStage.SIGNAL_NETWORK, "active", 
-                       i + 1, len(pixel_color_frames), 
-                       f"Conectando píxel {pixel_uuid[:8]}... ({len(color_frames_map)} colores)")
-                report_blocks(len(matrix.build))
-        build_signal_network(
-            matrix.build,
-            pixel_color_frames,
-            resolve_pixel_inputs(matrix.iter_pixels()),
-            [frame.duration for frame in sequence.frames],
-            gate_or_indexes,
-            timeline_delayer_indexes,
-        )
-        report_blocks(len(matrix.build))
+        report(GenerationStage.GATE_OR, "completed", 1, 1, f"{analysis.total_gate_ors_needed} Gate-ORs creados")
+        report(GenerationStage.TIMELINE, "completed", 100, 100, f"Timeline de {len(analysis.included_frame_indices)} Delayers creado")
         report(GenerationStage.SIGNAL_NETWORK, "completed", 1, 1, "Red de señales completada")
         
         report(GenerationStage.VALIDATION, "active", 0, 1, "Validando build...")
@@ -401,6 +360,22 @@ def _build_pixel_color_frame_table(
                 pixel_color_frames.setdefault(pixel_uuid, {})[color] = delayer_indices
 
     return pixel_color_frames
+
+
+def _plan_pixel_endpoints(matrix, analysis):
+    """Bind pre-analysed colour-layer IDs to already-cloned Splitter_3 blocks."""
+    endpoints_by_uuid = resolve_pixel_inputs(matrix.iter_pixels())
+    endpoints = {}
+    for layer in analysis.pixel_layers:
+        pixel = matrix.get_pixel_for_color(*layer.position, layer.color)
+        if pixel is None:
+            raise ValueError(
+                "[CONNECTION ERROR]\nComponent: Splitter_3\n"
+                "Connection point: input\nExpected target: generated colour layer\n"
+                f"Actual target: {layer.id}\nReason: Canvas did not create the analysed pixel layer."
+            )
+        endpoints[layer.id] = endpoints_by_uuid[pixel.uuid]
+    return endpoints
 
 
 def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None, block_callback=None):

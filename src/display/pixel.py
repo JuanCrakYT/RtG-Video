@@ -78,10 +78,11 @@ class Pixel:
                 f"Pixel {self.uuid} Splitter_3 has no connections to resolve"
             )
 
-        # A connection is [TipoLocal, PuntoPadre/UUID, IndicePadre].
-        # TipoLocal identifies the connected local block type; it is NOT a
-        # connection point. The point identifier is the second field.
-        input_point = splitter.connections[0][1]
+        # Splitter_3 declares its own ports in connection order.  The first
+        # declared port is the signal input (observed as "3" in both pixel
+        # assets); the second value belongs to its current parent and must not
+        # be reused as the Splitter input when replacing that parent with Wire.
+        input_point = splitter.connections[0][0]
         if not isinstance(input_point, str):
             raise ValueError(
                 f"Pixel {self.uuid} Splitter_3 input point must be a string"

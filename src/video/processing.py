@@ -126,14 +126,24 @@ def analyze_video_colors(video_path, width: int, height: int, palette: Iterable[
     return duration, frames
 
 
-def sequence_from_color_frames(matrix, duration: float, color_frames):
-    """Map analyzed coordinate colors to the generated physical pixel UUIDs."""
+def sequence_from_color_frames(matrix, duration, color_frames):
+    """Map analyzed colours to physical pixels without recalculating frames.
+
+    ``duration`` may be one fixed duration or the per-frame list produced by
+    the analysis phase.
+    """
     from ..animation.frame import FrameBuilder
     from ..animation.sequence import SequenceBuilder
 
     sequence_builder = SequenceBuilder()
-    for color_frame in color_frames:
-        frame_builder = FrameBuilder(duration=duration)
+    if isinstance(duration, (list, tuple)):
+        if len(duration) != len(color_frames):
+            raise ValueError("Frame duration list must match analyzed frame count")
+        durations = duration
+    else:
+        durations = [duration] * len(color_frames)
+    for frame_index, color_frame in enumerate(color_frames):
+        frame_builder = FrameBuilder(duration=float(durations[frame_index]))
         for y, row in enumerate(color_frame):
             for x, color in enumerate(row):
                 if tuple(color) == BLACK:
