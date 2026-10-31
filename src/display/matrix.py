@@ -106,8 +106,8 @@ class DisplayMatrix:
                         self.base_index,
                         spacing,
                         color,
-                        position_x=(x - (self.width - 1) / 2) * spacing,
-                        position_y=y * spacing + DEFAULT_CANVAS_Y_OFFSET,
+                        position_x=x - self.width / 2,
+                        position_y=y + DEFAULT_CANVAS_Y_OFFSET / spacing,
                         frame_index=pixel_index,
                         canvas_size=(self.width, self.height),
                         version=self.version,
@@ -144,8 +144,8 @@ class DisplayMatrix:
                     base_block.properties["EphemeralAttachments"][pixel_uuid] = {
                         "partName": "Base",
                         "cframe": create_pixel_offset_cframe(
-                            (x - (self.width - 1) / 2) * spacing,
-                            y * spacing + DEFAULT_CANVAS_Y_OFFSET,
+                            x - self.width / 2,
+                            y + DEFAULT_CANVAS_Y_OFFSET / spacing,
                             spacing,
                         ).to_list(),
                     }
