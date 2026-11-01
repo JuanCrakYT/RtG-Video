@@ -50,7 +50,7 @@ class MaterializedSignalPlan:
     button_index: int
     node_indexes: Mapping[str, int]
     wire_indexes: Mapping[str, int]
-    timeline_anchor_indexes: Mapping[str, int]
+    timeline_destinations: Mapping[str, PlannedWire]
 
 
 def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpoint]:
@@ -136,19 +136,28 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
     raise ValueError(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: endpoint\nExpected target: materialized node\nActual target: {node_id}\nReason: Missing physical binding.")
 
 
-def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline_anchor_indexes=None) -> List[List[object]]:
-    # RtG represents the temporal chain asymmetrically: the Wire has only
-    # the prior Delayer endpoint, and the following Delayer refers back to
-    # that Wire at its point 4.  Adding a second Wire endpoint to the next
-    # Delayer creates a physical feedback loop in-game.
+def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline_destinations=None) -> List[List[object]]:
     if wire.purpose == "timeline":
-        if timeline_anchor_indexes is None or wire.id not in timeline_anchor_indexes:
-            raise ValueError(f"Missing physical Part anchor for timeline Wire {wire.id}")
-        return [[
+        connections = [[
             TIPOLOCAL_WIRE,
             wire.source_point,
             to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
-        ], [TIPOLOCAL_BUTTON, "2", to_rtg_index(timeline_anchor_indexes[wire.id])]]
+        ]]
+        destination = (timeline_destinations or {}).get(wire.id)
+        if destination is None:
+            return connections
+        if destination.target_node in pixel_endpoints:
+            endpoint = pixel_endpoints[destination.target_node]
+            connections.append([
+                TIPOLOCAL_BUTTON, endpoint.anchor_point_id,
+                to_rtg_index(endpoint.anchor_block_index),
+            ])
+        else:
+            connections.append([
+                TIPOLOCAL_BUTTON, destination.target_point,
+                to_rtg_index(_endpoint_index(destination.target_node, node_indexes, pixel_endpoints)),
+            ])
+        return connections
     # The Splitter_3 points to the Wire.  The Wire itself remains physically
     # anchored to the Stick/RemoteButton that was the Splitter's old parent.
     if wire.target_node in pixel_endpoints:
@@ -164,7 +173,7 @@ def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline
     ]
 
 
-def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes: Sequence[int]):
+def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes: Sequence[int], skipped_wire_ids):
     """Assign deterministic indexes without deciding new topology."""
 
     by_frame = defaultdict(list)
@@ -173,18 +182,15 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     node_indexes = {gate.id: gate_indexes[index] for index, gate in enumerate(analysis.gate_ors)}
     wire_indexes = {}
     next_index = len(build.blocks)
-    timeline_anchor_indexes = {}
-    for wire in analysis.wires:
-        if wire.purpose == "timeline":
-            timeline_anchor_indexes[wire.id] = next_index
-            next_index += 1
     for frame_index in analysis.included_frame_indices:
         node_indexes[_delayer_id(frame_index)] = next_index
         next_index += 1
         for wire in by_frame[frame_index]:
+            if wire.id in skipped_wire_ids:
+                continue
             wire_indexes[wire.id] = next_index
             next_index += 1
-    return node_indexes, wire_indexes, timeline_anchor_indexes, by_frame
+    return node_indexes, wire_indexes, by_frame
 
 
 def materialize_signal_plan(
@@ -214,17 +220,30 @@ def materialize_signal_plan(
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    node_indexes, wire_indexes, timeline_anchor_indexes, wires_by_frame = _planned_layout(build, analysis, gate_indexes)
+    signal_wires_by_frame = defaultdict(list)
+    for wire in analysis.wires:
+        if wire.purpose != "timeline":
+            signal_wires_by_frame[wire.frame_index].append(wire)
 
-    # The free end of every temporal Wire is a distinct Part.  This is the
-    # in-game round-trip pattern: the next Delayer references the Wire, while
-    # the Wire's second endpoint attaches to this Part at point 2.
+    # Reuse each timeline Wire's free endpoint for the first active signal of
+    # its frame.  This removes the auxiliary Part and the duplicate signal
+    # Wire.  Frames without an active destination remain one-ended.
+    timeline_destinations = {}
+    skipped_wire_ids = set()
     for wire in analysis.wires:
         if wire.purpose != "timeline":
             continue
-        actual_index = build.add_block(RtGBlock("Part"))
-        if actual_index != timeline_anchor_indexes[wire.id]:
-            raise RuntimeError("Internal layout drift while materializing timeline anchors")
+        candidates = signal_wires_by_frame[wire.frame_index]
+        if candidates:
+            destination = candidates[0]
+            timeline_destinations[wire.id] = destination
+            skipped_wire_ids.add(destination.id)
+
+    node_indexes, wire_indexes, wires_by_frame = _planned_layout(
+        build, analysis, gate_indexes, skipped_wire_ids
+    )
+    for timeline_wire_id, destination in timeline_destinations.items():
+        wire_indexes[destination.id] = wire_indexes[timeline_wire_id]
 
     incoming_timeline = {
         wire.target_node: wire
@@ -252,8 +271,10 @@ def materialize_signal_plan(
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
         for wire in wires_by_frame[frame.index]:
+            if wire.id in skipped_wire_ids:
+                continue
             actual_wire_index = build.add_block(RtGBlock(
-                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints, timeline_anchor_indexes)
+                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints, timeline_destinations)
             ))
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
@@ -273,7 +294,7 @@ def materialize_signal_plan(
         splitter.connections[0] = [endpoint.point_id, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])]
 
     materialized = MaterializedSignalPlan(
-        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_anchor_indexes)
+        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations)
     )
     errors = validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized)
     if errors:
@@ -303,9 +324,13 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
     for wire in analysis.wires:
         index = materialized.wire_indexes[wire.id]
         block = build.blocks[index]
+        if wire.id not in materialized.wire_indexes:
+            continue
         expected = _wire_connections(
-            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_anchor_indexes
+            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations
         )
+        if wire.id in {item.id for item in materialized.timeline_destinations.values()}:
+            continue
         if block.block_type != "Wire" or block.connections != expected:
             errors.append(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: {wire.id}\nExpected target: {expected}\nActual target: {block.connections}\nReason: Materialized endpoints differ from analysis plan.")
     for layer in analysis.pixel_layers:
@@ -362,7 +387,7 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             continue
         if len(block.connections) == 2:
             continue
-        # Timeline Wires are deliberately one-ended.  Their following
+        # A timeline Wire may be one-ended for a black frame. Its following
         # Delayer owns the reciprocal ["2", "4", Wire] connection.
         if len(block.connections) == 1:
             local_type, point_id, target_index = block.connections[0]

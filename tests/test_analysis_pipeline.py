@@ -115,19 +115,26 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     gates = [block for block in matrix.build.blocks if block.block_type == "Gate-OR"]
     assert len(gates) == 1
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
+    reused_signal_wire_ids = {
+        wire.id for wire in materialized.timeline_destinations.values()
+    }
     for wire in analysis.wires:
+        if wire.id in reused_signal_wire_ids:
+            continue
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
-        assert len(block.connections) == 2
+        assert len(block.connections) == (
+            1 if wire.purpose == "timeline" and wire.id not in materialized.timeline_destinations else 2
+        )
     assert not validate_signal_connections(matrix.build)
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
     timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
-    anchor_index = materialized.timeline_anchor_indexes[timeline.id]
-    assert matrix.build.blocks[anchor_index].block_type == "Part"
+    destination = materialized.timeline_destinations[timeline.id]
     assert timeline_block.connections == [
         ["3", "1", materialized.node_indexes["delayer:0"] + 1],
-        ["1", "2", anchor_index + 1],
+        ["1", destination.target_point, materialized.node_indexes[destination.target_node] + 1],
     ]
+    assert materialized.wire_indexes[destination.id] == materialized.wire_indexes[timeline.id]
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
         ["2", "4", materialized.wire_indexes[timeline.id] + 1]
     ]
