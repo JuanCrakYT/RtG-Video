@@ -179,6 +179,10 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     by_frame = defaultdict(list)
     for wire in analysis.wires:
         by_frame[wire.frame_index].append(wire)
+    # A temporal Wire is emitted after the frame's signal Wires so it can be
+    # attached to the first signal Wire without changing any other fan-out.
+    for wires in by_frame.values():
+        wires.sort(key=lambda wire: wire.purpose == "timeline")
     node_indexes = {gate.id: gate_indexes[index] for index, gate in enumerate(analysis.gate_ors)}
     wire_indexes = {}
     next_index = len(build.blocks)
@@ -236,6 +240,13 @@ def materialize_signal_plan(
         for wire in analysis.wires
         if wire.purpose == "timeline"
     }
+    first_signal_by_frame = {
+        frame_index: next(
+            (wire for wire in wires if wire.purpose == "pixel-signal" and wire.source_node == _delayer_id(frame_index)),
+            None,
+        )
+        for frame_index, wires in wires_by_frame.items()
+    }
     for frame in (frame for frame in analysis.frames if frame.included_in_build):
         delayer_id = _delayer_id(frame.index)
         connections = []
@@ -259,8 +270,26 @@ def materialize_signal_plan(
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
+            if wire.purpose == "timeline":
+                first_signal = first_signal_by_frame[frame.index]
+                if first_signal is not None:
+                    # Delayer -> first signal Wire -> temporal Wire -> next Delayer.
+                    # Other signal Wires still originate directly at Delayer.
+                    physical_source_index = wire_indexes[first_signal.id]
+                    wire_connections = _wire_connections(
+                        wire, node_indexes, pixel_endpoints, timeline_destinations
+                    )
+                    wire_connections[0][2] = to_rtg_index(physical_source_index)
+                else:
+                    wire_connections = _wire_connections(
+                        wire, node_indexes, pixel_endpoints, timeline_destinations
+                    )
+            else:
+                wire_connections = _wire_connections(
+                    wire, node_indexes, pixel_endpoints, timeline_destinations
+                )
             actual_wire_index = build.add_block(RtGBlock(
-                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints, timeline_destinations)
+                "Wire", wire_connections
             ))
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
@@ -313,6 +342,18 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
         expected = _wire_connections(
             wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations
         )
+        if wire.purpose == "timeline":
+            first_signal = next(
+                (
+                    item for item in analysis.wires
+                    if item.frame_index == wire.frame_index
+                    and item.purpose == "pixel-signal"
+                    and item.source_node == _delayer_id(wire.frame_index)
+                ),
+                None,
+            )
+            if first_signal is not None:
+                expected[0][2] = to_rtg_index(materialized.wire_indexes[first_signal.id])
         if wire.id in {item.id for item in materialized.timeline_destinations.values()}:
             continue
         if block.block_type != "Wire" or block.connections != expected:
@@ -380,11 +421,11 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                 and point_id == DELAYER_OUTPUT_POINT
                 and isinstance(target_index, int)
                 and 1 <= target_index <= len(build.blocks)
-                and build.blocks[target_index - 1].block_type == "Delayer"
+                and build.blocks[target_index - 1].block_type in {"Delayer", "Wire"}
             ):
                 continue
             errors.append(
-                f"Wire {index + 1}: one-ended Wire must start at Delayer point "
+                f"Wire {index + 1}: one-ended temporal Wire must start at Delayer/Wire point "
                 f"{DELAYER_OUTPUT_POINT}"
             )
             continue
