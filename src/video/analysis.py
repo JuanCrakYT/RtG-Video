@@ -14,7 +14,7 @@ from .processing import BLACK, analyze_pixel_states, analyze_video_colors
 
 
 RGBColor = Tuple[int, int, int]
-DELAYER_OUTPUT_POINT = "1"
+DELAYER_OUTPUT_POINT = "4"
 # A Wire reaches a Delayer at point 1.  The Delayer's own parent reference to
 # that Wire uses point 4; those are different sides of the relationship.
 DELAYER_INPUT_POINT = "1"
@@ -274,6 +274,15 @@ def _validate_signal_plan(analysis: VideoAnalysisResult) -> None:
             matches = [wire for wire in analysis.wires if wire.purpose == "timeline" and wire.source_node == _delayer_id(previous) and wire.target_node == _delayer_id(current)]
             if len(matches) != 1:
                 raise ConnectionPlanError("Delayer", DELAYER_OUTPUT_POINT, _delayer_id(current), str(matches), "Every frame must trigger the next Delayer exactly once.")
+    for frame_index in included[1:-1]:
+        incoming = next(wire for wire in analysis.wires if wire.purpose == "timeline" and wire.target_node == _delayer_id(frame_index))
+        outgoing = next(wire for wire in analysis.wires if wire.purpose == "timeline" and wire.source_node == _delayer_id(frame_index))
+        if incoming.target_point == outgoing.source_point:
+            raise ConnectionPlanError(
+                "Delayer", "timeline ports", "different input/output ports",
+                incoming.target_point,
+                "An intermediate Delayer would merge its incoming and outgoing Wires."
+            )
 
 
 def analyze_color_frames(

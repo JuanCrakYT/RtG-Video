@@ -120,7 +120,7 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
     timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
-    assert timeline_block.connections[0][1] == "1"  # preceding Delayer output
+    assert timeline_block.connections[0][1] == "4"  # preceding Delayer output
     assert timeline_block.connections[1][1] == "1"  # next Delayer Wire endpoint
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
         ["2", "4", materialized.wire_indexes[timeline.id] + 1]
