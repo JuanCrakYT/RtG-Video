@@ -117,20 +117,22 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
     for wire in analysis.wires:
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
-        # Every planned Wire, including temporal links, must have both ends.
-        assert len(block.connections) == 2
+        # Timeline Wires have one endpoint; signal Wires have two.
+        assert len(block.connections) == (1 if wire.purpose == "timeline" else 2)
     assert not validate_signal_connections(matrix.build)
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
     timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
+    assert timeline_block.connections == [
+        ["3", "1", materialized.node_indexes["delayer:0"] + 1]
+    ]
+    assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
+        ["2", "4", materialized.wire_indexes[timeline.id] + 1]
+    ]
     first_signal = next(
         wire for wire in analysis.wires
         if wire.frame_index == 0 and wire.purpose == "pixel-signal"
     )
-    assert timeline_block.connections == [
-        ["3", "4", materialized.wire_indexes[first_signal.id] + 1],
-        ["1", "1", materialized.node_indexes["delayer:1"] + 1],
-    ]
     assert matrix.build.blocks[materialized.wire_indexes[first_signal.id]].connections[0] == [
         "3", "1", materialized.node_indexes["delayer:0"] + 1
     ]
@@ -138,6 +140,57 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         ["2", "4", materialized.wire_indexes[timeline.id] + 1]
     ]
 
+
+
+def test_signal_wire_chain_excludes_timeline_wire_and_prevents_feedback():
+    analysis = analyze_color_frames(
+        [
+            [[RED, GREEN]],
+            [[RED, GREEN]],
+            [[RED, GREEN]],
+        ],
+        2, 1, frame_durations=[0.1, 0.1, 0.1],
+    )
+    matrix, _, materialized = _materialize(analysis)
+
+    frame_zero_signal_wires = [
+        wire for wire in analysis.wires
+        if wire.frame_index == 0
+        and wire.purpose == "pixel-signal"
+        and wire.source_node == "delayer:0"
+    ]
+    assert len(frame_zero_signal_wires) >= 2
+
+    first, second = frame_zero_signal_wires[:2]
+    first_block = matrix.build.blocks[materialized.wire_indexes[first.id]]
+    second_block = matrix.build.blocks[materialized.wire_indexes[second.id]]
+    assert first_block.connections[0] == [
+        "3", "1", materialized.node_indexes["delayer:0"] + 1
+    ]
+    assert second_block.connections[0] == [
+        "3", "4", materialized.wire_indexes[first.id] + 1
+    ]
+
+    timeline = next(
+        wire for wire in analysis.wires
+        if wire.frame_index == 0 and wire.purpose == "timeline"
+    )
+    timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
+    assert timeline_block.connections == [
+        ["3", "1", materialized.node_indexes["delayer:0"] + 1]
+    ]
+    # The next Delayer references the temporal Wire, but the temporal Wire
+    # does not also connect to that Delayer (which would form feedback).
+    assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
+        ["2", "4", materialized.wire_indexes[timeline.id] + 1]
+    ]
+    assert materialized.wire_indexes[timeline.id] not in {
+        materialized.wire_indexes[wire.id] for wire in frame_zero_signal_wires
+    }
+    assert not validate_signal_connections(matrix.build)
+    assert not validate_materialized_signal_plan(
+        matrix.build, analysis, resolve_pixel_inputs(matrix.iter_pixels()), materialized
+    )
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
     reset_uuid_manager()
