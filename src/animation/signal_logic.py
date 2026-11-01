@@ -231,15 +231,12 @@ def materialize_signal_plan(
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    # Preserve all signal Wires. A temporal Wire is deliberately separate:
-    # its following Delayer references it at point 4.
-    # Every temporal Wire must declare both physical endpoints: its source
-    # (the preceding Delayer or the final signal Wire of that frame) and the
-    # next Delayer input. Leaving this mapping empty emitted one-ended Wires
-    # that passed JSON validation but were physically loose in RtG.
-    timeline_destinations = {
-        wire.id: wire for wire in analysis.wires if wire.purpose == "timeline"
-    }
+    # Timeline Wires are intentionally one-ended: the following Delayer
+    # owns the reciprocal reference to the Wire at point 4. Giving the
+    # timeline Wire a second endpoint on that Delayer creates feedback.
+    # Signal Wires form their own serial chain below; timeline Wires never
+    # participate in that chain.
+    timeline_destinations = {}
     skipped_wire_ids = set()
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
@@ -274,20 +271,25 @@ def materialize_signal_plan(
         ))
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
-        previous_delayer_wire = None
+        previous_signal_wire = None
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
-            if wire.source_node == delayer_id:
-                # First Wire leaves Delayer point 1. Every later direct Wire,
-                # including the final temporal Wire, leaves point 4 of the
-                # preceding Wire -- the exact pattern verified manually.
+            if wire.purpose == "timeline":
+                # Keep the temporal path independent. The next Delayer
+                # references this Wire at point 4; do not add a reciprocal
+                # endpoint here and do not mix it into the signal chain.
+                source_link = ("1", node_indexes[delayer_id])
+            elif wire.source_node == delayer_id:
+                # Only signal Wires are chained. The first leaves the
+                # Delayer; subsequent direct signal Wires leave point 4 of
+                # the preceding signal Wire, never the temporal Wire.
                 source_link = (
                     ("1", node_indexes[delayer_id])
-                    if previous_delayer_wire is None
-                    else ("4", previous_delayer_wire)
+                    if previous_signal_wire is None
+                    else ("4", previous_signal_wire)
                 )
-                previous_delayer_wire = wire_indexes[wire.id]
+                previous_signal_wire = wire_indexes[wire.id]
             else:
                 source_link = (wire.source_point, _endpoint_index(
                     wire.source_node, node_indexes, pixel_endpoints
