@@ -97,6 +97,26 @@ def test_splitter_input_comes_from_first_declared_splitter_port():
     pixel_wire = next(wire for wire in analysis.wires if wire.target_node == layer.id)
     assert endpoint.point_id == "3"
     assert splitter.connections[0] == ["3", "4", materialized.wire_indexes[pixel_wire.id] + 1]
+    pixel_wire_block = matrix.build.blocks[materialized.wire_indexes[pixel_wire.id]]
+    assert pixel_wire_block.connections[0] == [
+        "3", endpoint.anchor_point_id, endpoint.anchor_block_index + 1
+    ]
+    assert matrix.build.blocks[endpoint.anchor_block_index].block_type == "Stick"
+
+
+def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
+    analysis = analyze_color_frames(
+        [[[RED]], [[BLACK]], [[RED]]], 1, 1, frame_durations=[0.1, 0.2, 0.3]
+    )
+    matrix, _, materialized = _materialize(analysis)
+    delayers = [block for block in matrix.build.blocks if block.block_type == "Delayer"]
+    assert all(len(block.connections) == 1 for block in delayers)
+    gates = [block for block in matrix.build.blocks if block.block_type == "Gate-OR"]
+    assert len(gates) == 1
+    assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
+    for wire in analysis.wires:
+        block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
+        assert len(block.connections) == 2
 
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():

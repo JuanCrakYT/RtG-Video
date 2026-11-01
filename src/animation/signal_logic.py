@@ -39,6 +39,8 @@ class PixelSignalEndpoint:
 
     block_index: int
     point_id: str
+    anchor_block_index: int
+    anchor_point_id: str
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,22 @@ def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpo
     endpoints: Dict[str, PixelSignalEndpoint] = {}
     for pixel in pixels:
         block_index, point_id = pixel.get_signal_endpoint()
-        endpoints[pixel.uuid] = PixelSignalEndpoint(block_index, point_id)
+        splitter = pixel.blocks[
+            next(
+                template_index
+                for template_index, global_index in pixel.block_indices.items()
+                if global_index - 1 == block_index
+            ) - 1
+        ]
+        original_input = splitter.connections[0]
+        anchor_point, anchor_index = original_input[1], original_input[2]
+        if not isinstance(anchor_point, str) or not isinstance(anchor_index, int):
+            raise ValueError(
+                f"Pixel {pixel.uuid} Splitter_3 input must declare a physical anchor"
+            )
+        endpoints[pixel.uuid] = PixelSignalEndpoint(
+            block_index, point_id, anchor_index - 1, anchor_point
+        )
     return endpoints
 
 
@@ -119,6 +136,15 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
 
 
 def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints) -> List[List[object]]:
+    # The Splitter_3 points to the Wire.  The Wire itself remains physically
+    # anchored to the Stick/RemoteButton that was the Splitter's old parent.
+    if wire.target_node in pixel_endpoints:
+        endpoint = pixel_endpoints[wire.target_node]
+        return [
+            [TIPOLOCAL_WIRE, endpoint.anchor_point_id, to_rtg_index(endpoint.anchor_block_index)],
+            [TIPOLOCAL_BUTTON, wire.source_point,
+             to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
+        ]
     return [
         [TIPOLOCAL_WIRE, wire.source_point, to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
         [TIPOLOCAL_BUTTON, wire.target_point, to_rtg_index(_endpoint_index(wire.target_node, node_indexes, pixel_endpoints))],
@@ -141,17 +167,6 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
             wire_indexes[wire.id] = next_index
             next_index += 1
     return node_indexes, wire_indexes, by_frame
-
-
-def _gate_connections(analysis: VideoAnalysisResult, gate_id: str, wire_indexes: Mapping[str, int]) -> List[List[object]]:
-    connections = []
-    for wire in analysis.wires:
-        wire_index = to_rtg_index(wire_indexes[wire.id])
-        if wire.source_node == gate_id:
-            connections.append([TIPOLOCAL_GATE_OR, wire.source_point, wire_index])
-        if wire.target_node == gate_id:
-            connections.append([TIPOLOCAL_GATE_OR, wire.target_point, wire_index])
-    return connections
 
 
 def materialize_signal_plan(
@@ -183,11 +198,6 @@ def materialize_signal_plan(
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(build, analysis, gate_indexes)
 
-    # Gate connections are known entirely from the plan and their reserved Wire
-    # indexes, so they can be created before the timeline blocks.
-    for gate, gate_index in zip(analysis.gate_ors, gate_indexes):
-        build.blocks[gate_index].connections.extend(_gate_connections(analysis, gate.id, wire_indexes))
-
     incoming_timeline = {
         wire.target_node: wire
         for wire in analysis.wires
@@ -201,9 +211,6 @@ def materialize_signal_plan(
         else:
             incoming = incoming_timeline[delayer_id]
             connections.append([TIPOLOCAL_DELAYER, DELAYER_INPUT_POINT, to_rtg_index(wire_indexes[incoming.id])])
-        for wire in wires_by_frame[frame.index]:
-            if wire.source_node == delayer_id:
-                connections.append([TIPOLOCAL_DELAYER, wire.source_point, to_rtg_index(wire_indexes[wire.id])])
         actual_index = build.add_block(RtGBlock(
             "Delayer",
             connections=connections,
@@ -223,8 +230,8 @@ def materialize_signal_plan(
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
 
-    # A Splitter_3 has one active signal input. Replace the template's old
-    # parent instead of leaving a second, conflicting parent connection.
+    # A Splitter_3 has one active signal input. It points to the Wire; the
+    # Wire preserves the template's old Stick/RemoteButton physical anchor.
     for layer in analysis.pixel_layers:
         incoming = next(wire for wire in analysis.wires if wire.target_node == layer.id)
         endpoint = pixel_endpoints[layer.id]
@@ -256,6 +263,13 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
         block = build.blocks[index]
         if block.block_type != "Delayer" or block.properties.get("Delay") != frame.duration:
             errors.append(f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: Delay\nExpected target: {frame.duration}\nActual target: {block.properties.get('Delay')}\nReason: Frame duration was not preserved.")
+        if len(block.connections) != 1:
+            errors.append(
+                f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: timeline\n"
+                "Expected target: exactly one Button/Wire input\n"
+                f"Actual target: {block.connections}\n"
+                "Reason: Delayer signal fan-out belongs to Wire blocks, not Delayer."
+            )
     for wire in analysis.wires:
         index = materialized.wire_indexes[wire.id]
         block = build.blocks[index]
@@ -269,6 +283,14 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
         actual = build.blocks[endpoint.block_index].connections[0]
         if actual != expected:
             errors.append(f"[CONNECTION ERROR]\nComponent: Splitter_3\nConnection point: {endpoint.point_id}\nExpected target: {expected}\nActual target: {actual}\nReason: Pixel input was not replaced by the planned Wire.")
+        wire_block = build.blocks[materialized.wire_indexes[wire.id]]
+        expected_anchor = [TIPOLOCAL_WIRE, endpoint.anchor_point_id, to_rtg_index(endpoint.anchor_block_index)]
+        if not wire_block.connections or wire_block.connections[0] != expected_anchor:
+            errors.append(
+                f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: physical anchor\n"
+                f"Expected target: {expected_anchor}\nActual target: {wire_block.connections}\n"
+                "Reason: Pixel Wire is not attached to the original Splitter_3 anchor."
+            )
     return errors
 
 
@@ -293,7 +315,6 @@ def build_animation_timeline(build: RtGBuild, frame_durations: Sequence[float], 
                 [TIPOLOCAL_WIRE, DELAYER_OUTPUT_POINT, to_rtg_index(previous)],
                 [TIPOLOCAL_BUTTON, DELAYER_INPUT_POINT, to_rtg_index(indexes[-1])],
             ]))
-            build.blocks[previous].connections.append([TIPOLOCAL_DELAYER, DELAYER_OUTPUT_POINT, to_rtg_index(wire_index)])
             build.blocks[indexes[-1]].connections[0] = [TIPOLOCAL_DELAYER, DELAYER_INPUT_POINT, to_rtg_index(wire_index)]
     return indexes
 
