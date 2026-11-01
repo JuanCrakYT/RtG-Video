@@ -117,12 +117,17 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
     for wire in analysis.wires:
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
-        assert len(block.connections) == (1 if wire.purpose == "timeline" else 2)
+        assert len(block.connections) == 2
     assert not validate_signal_connections(matrix.build)
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
     timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
-    assert timeline_block.connections == [["3", "1", materialized.node_indexes["delayer:0"] + 1]]
+    anchor_index = materialized.timeline_anchor_indexes[timeline.id]
+    assert matrix.build.blocks[anchor_index].block_type == "Part"
+    assert timeline_block.connections == [
+        ["3", "1", materialized.node_indexes["delayer:0"] + 1],
+        ["1", "2", anchor_index + 1],
+    ]
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
         ["2", "4", materialized.wire_indexes[timeline.id] + 1]
     ]

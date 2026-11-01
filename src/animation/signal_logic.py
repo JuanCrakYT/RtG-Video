@@ -50,6 +50,7 @@ class MaterializedSignalPlan:
     button_index: int
     node_indexes: Mapping[str, int]
     wire_indexes: Mapping[str, int]
+    timeline_anchor_indexes: Mapping[str, int]
 
 
 def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpoint]:
@@ -135,17 +136,19 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
     raise ValueError(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: endpoint\nExpected target: materialized node\nActual target: {node_id}\nReason: Missing physical binding.")
 
 
-def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints) -> List[List[object]]:
+def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline_anchor_indexes=None) -> List[List[object]]:
     # RtG represents the temporal chain asymmetrically: the Wire has only
     # the prior Delayer endpoint, and the following Delayer refers back to
     # that Wire at its point 4.  Adding a second Wire endpoint to the next
     # Delayer creates a physical feedback loop in-game.
     if wire.purpose == "timeline":
+        if timeline_anchor_indexes is None or wire.id not in timeline_anchor_indexes:
+            raise ValueError(f"Missing physical Part anchor for timeline Wire {wire.id}")
         return [[
             TIPOLOCAL_WIRE,
             wire.source_point,
             to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
-        ]]
+        ], [TIPOLOCAL_BUTTON, "2", to_rtg_index(timeline_anchor_indexes[wire.id])]]
     # The Splitter_3 points to the Wire.  The Wire itself remains physically
     # anchored to the Stick/RemoteButton that was the Splitter's old parent.
     if wire.target_node in pixel_endpoints:
@@ -170,13 +173,18 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     node_indexes = {gate.id: gate_indexes[index] for index, gate in enumerate(analysis.gate_ors)}
     wire_indexes = {}
     next_index = len(build.blocks)
+    timeline_anchor_indexes = {}
+    for wire in analysis.wires:
+        if wire.purpose == "timeline":
+            timeline_anchor_indexes[wire.id] = next_index
+            next_index += 1
     for frame_index in analysis.included_frame_indices:
         node_indexes[_delayer_id(frame_index)] = next_index
         next_index += 1
         for wire in by_frame[frame_index]:
             wire_indexes[wire.id] = next_index
             next_index += 1
-    return node_indexes, wire_indexes, by_frame
+    return node_indexes, wire_indexes, timeline_anchor_indexes, by_frame
 
 
 def materialize_signal_plan(
@@ -202,11 +210,21 @@ def materialize_signal_plan(
             f"Actual target: {missing_layers[0]}\nReason: Build canvas does not contain the analysed colour layer."
         )
     if not analysis.included_frame_indices:
-        return MaterializedSignalPlan(-1, {}, {})
+        return MaterializedSignalPlan(-1, {}, {}, {})
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    node_indexes, wire_indexes, wires_by_frame = _planned_layout(build, analysis, gate_indexes)
+    node_indexes, wire_indexes, timeline_anchor_indexes, wires_by_frame = _planned_layout(build, analysis, gate_indexes)
+
+    # The free end of every temporal Wire is a distinct Part.  This is the
+    # in-game round-trip pattern: the next Delayer references the Wire, while
+    # the Wire's second endpoint attaches to this Part at point 2.
+    for wire in analysis.wires:
+        if wire.purpose != "timeline":
+            continue
+        actual_index = build.add_block(RtGBlock("Part"))
+        if actual_index != timeline_anchor_indexes[wire.id]:
+            raise RuntimeError("Internal layout drift while materializing timeline anchors")
 
     incoming_timeline = {
         wire.target_node: wire
@@ -235,7 +253,7 @@ def materialize_signal_plan(
             raise RuntimeError("Internal layout drift while materializing Delayers")
         for wire in wires_by_frame[frame.index]:
             actual_wire_index = build.add_block(RtGBlock(
-                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints)
+                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints, timeline_anchor_indexes)
             ))
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
@@ -254,7 +272,9 @@ def materialize_signal_plan(
             )
         splitter.connections[0] = [endpoint.point_id, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])]
 
-    materialized = MaterializedSignalPlan(button_index, dict(node_indexes), dict(wire_indexes))
+    materialized = MaterializedSignalPlan(
+        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_anchor_indexes)
+    )
     errors = validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized)
     if errors:
         raise ValueError("\n".join(errors))
@@ -283,7 +303,9 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
     for wire in analysis.wires:
         index = materialized.wire_indexes[wire.id]
         block = build.blocks[index]
-        expected = _wire_connections(wire, materialized.node_indexes, pixel_endpoints)
+        expected = _wire_connections(
+            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_anchor_indexes
+        )
         if block.block_type != "Wire" or block.connections != expected:
             errors.append(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: {wire.id}\nExpected target: {expected}\nActual target: {block.connections}\nReason: Materialized endpoints differ from analysis plan.")
     for layer in analysis.pixel_layers:
