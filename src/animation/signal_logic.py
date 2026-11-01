@@ -210,7 +210,7 @@ def materialize_signal_plan(
             connections.append([TIPOLOCAL_DELAYER, "2", to_rtg_index(button_index)])
         else:
             incoming = incoming_timeline[delayer_id]
-            connections.append([TIPOLOCAL_DELAYER, DELAYER_INPUT_POINT, to_rtg_index(wire_indexes[incoming.id])])
+            connections.append([TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])])
         actual_index = build.add_block(RtGBlock(
             "Delayer",
             connections=connections,
@@ -307,7 +307,7 @@ def build_animation_timeline(build: RtGBuild, frame_durations: Sequence[float], 
     button_index = add_start_button(build, base_index)
     indexes = []
     for frame_index, duration in enumerate(durations):
-        incoming = [TIPOLOCAL_DELAYER, "2", to_rtg_index(button_index)] if frame_index == 0 else [TIPOLOCAL_DELAYER, DELAYER_INPUT_POINT, to_rtg_index(len(build.blocks) + 1)]
+        incoming = [TIPOLOCAL_DELAYER, "2", to_rtg_index(button_index)] if frame_index == 0 else [TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(len(build.blocks) + 1)]
         indexes.append(build.add_block(RtGBlock("Delayer", [incoming], {"DelayDeactivation": True, "Delay": float(duration), "RGB": [21, 95, 163], "Frame": frame_index})))
         if frame_index:
             previous = indexes[-2]
@@ -315,7 +315,7 @@ def build_animation_timeline(build: RtGBuild, frame_durations: Sequence[float], 
                 [TIPOLOCAL_WIRE, DELAYER_OUTPUT_POINT, to_rtg_index(previous)],
                 [TIPOLOCAL_BUTTON, DELAYER_INPUT_POINT, to_rtg_index(indexes[-1])],
             ]))
-            build.blocks[indexes[-1]].connections[0] = [TIPOLOCAL_DELAYER, DELAYER_INPUT_POINT, to_rtg_index(wire_index)]
+            build.blocks[indexes[-1]].connections[0] = [TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)]
     return indexes
 
 

@@ -15,7 +15,9 @@ from .processing import BLACK, analyze_pixel_states, analyze_video_colors
 
 RGBColor = Tuple[int, int, int]
 DELAYER_OUTPUT_POINT = "1"
-DELAYER_INPUT_POINT = "4"
+# A Wire reaches a Delayer at point 1.  The Delayer's own parent reference to
+# that Wire uses point 4; those are different sides of the relationship.
+DELAYER_INPUT_POINT = "1"
 GATE_OR_OUTPUT_POINT = "1"
 GATE_OR_INPUT_A_POINT = "2"
 GATE_OR_INPUT_B_POINT = "3"

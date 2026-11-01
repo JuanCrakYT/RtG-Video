@@ -118,6 +118,14 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
         assert len(block.connections) == 2
 
+    timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
+    timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
+    assert timeline_block.connections[0][1] == "1"  # preceding Delayer output
+    assert timeline_block.connections[1][1] == "1"  # next Delayer Wire endpoint
+    assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
+        ["2", "4", materialized.wire_indexes[timeline.id] + 1]
+    ]
+
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
     reset_uuid_manager()
@@ -152,6 +160,17 @@ def test_reference_builds_keep_one_based_connections_and_expected_signal_ports()
     test2 = json.loads((ROOT / "assets/builds/working/test2.json").read_text(encoding="utf-8"))
     delays = [block[2]["Delay"] for block in test2 if block[0] == "Delayer"]
     assert delays and all(delay == 1 / 3 for delay in delays)
+
+    # In a real saved build, a Wire reaches a Delayer at endpoint 1.  The
+    # Delayer's own reference back to its incoming Wire is endpoint 4.
+    for blocks in (json.loads((ROOT / "assets/builds/working/test.json").read_text(encoding="utf-8")), test2):
+        types = {index: block[0] for index, block in enumerate(blocks, 1)}
+        for block_type, connections, _ in blocks:
+            if block_type == "Wire":
+                for local_type, point_id, target_index in connections:
+                    if types[target_index] == "Delayer":
+                        assert local_type in {"1", "3"}
+                        assert point_id == "1"
 
 
 def test_invalid_connection_plan_aborts_before_build():
