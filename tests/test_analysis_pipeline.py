@@ -119,12 +119,9 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         wire.id for wire in materialized.timeline_destinations.values()
     }
     for wire in analysis.wires:
-        if wire.id in reused_signal_wire_ids:
-            continue
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
-        assert len(block.connections) == (
-            1 if wire.purpose == "timeline" and wire.id not in materialized.timeline_destinations else 2
-        )
+        # Every planned Wire, including temporal links, must have both ends.
+        assert len(block.connections) == 2
     assert not validate_signal_connections(matrix.build)
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
@@ -133,9 +130,10 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         wire for wire in analysis.wires
         if wire.frame_index == 0 and wire.purpose == "pixel-signal"
     )
-    assert timeline_block.connections == [[
-        "3", "4", materialized.wire_indexes[first_signal.id] + 1
-    ]]
+    assert timeline_block.connections == [
+        ["3", "4", materialized.wire_indexes[first_signal.id] + 1],
+        ["1", "1", materialized.node_indexes["delayer:1"] + 1],
+    ]
     assert matrix.build.blocks[materialized.wire_indexes[first_signal.id]].connections[0] == [
         "3", "1", materialized.node_indexes["delayer:0"] + 1
     ]
