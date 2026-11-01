@@ -51,6 +51,7 @@ class MaterializedSignalPlan:
     node_indexes: Mapping[str, int]
     wire_indexes: Mapping[str, int]
     timeline_destinations: Mapping[str, PlannedWire]
+    wire_source_indexes: Mapping[str, int]
 
 
 def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpoint]:
@@ -136,12 +137,18 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
     raise ValueError(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: endpoint\nExpected target: materialized node\nActual target: {node_id}\nReason: Missing physical binding.")
 
 
-def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline_destinations=None) -> List[List[object]]:
+def _wire_connections(
+    wire: PlannedWire,
+    node_indexes,
+    pixel_endpoints,
+    timeline_destinations=None,
+    source_index=None,
+) -> List[List[object]]:
     if wire.purpose == "timeline":
         connections = [[
             TIPOLOCAL_WIRE,
             wire.source_point,
-            to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
+            to_rtg_index(source_index if source_index is not None else _endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
         ]]
         destination = (timeline_destinations or {}).get(wire.id)
         if destination is None:
@@ -168,7 +175,7 @@ def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline
              to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
         ]
     return [
-        [TIPOLOCAL_WIRE, wire.source_point, to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
+        [TIPOLOCAL_WIRE, wire.source_point, to_rtg_index(source_index if source_index is not None else _endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
         [TIPOLOCAL_BUTTON, wire.target_point, to_rtg_index(_endpoint_index(wire.target_node, node_indexes, pixel_endpoints))],
     ]
 
@@ -216,7 +223,7 @@ def materialize_signal_plan(
             f"Actual target: {missing_layers[0]}\nReason: Build canvas does not contain the analysed colour layer."
         )
     if not analysis.included_frame_indices:
-        return MaterializedSignalPlan(-1, {}, {}, {})
+        return MaterializedSignalPlan(-1, {}, {}, {}, {})
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
@@ -250,6 +257,7 @@ def materialize_signal_plan(
         for wire in analysis.wires
         if wire.purpose == "timeline"
     }
+    wire_source_indexes = {}
     for frame in (frame for frame in analysis.frames if frame.included_in_build):
         delayer_id = _delayer_id(frame.index)
         connections = []
@@ -270,11 +278,26 @@ def materialize_signal_plan(
         ))
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
+        previous_delayer_wire_index = None
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
+            # A frame's Delayer feeds a serial Wire chain.  Only its first
+            # outgoing Wire originates at the Delayer; each following one
+            # originates at the preceding Wire (as observed in the game).
+            source_index = None
+            if wire.source_node == delayer_id:
+                source_index = previous_delayer_wire_index
+                if source_index is None:
+                    source_index = node_indexes[delayer_id]
+                previous_delayer_wire_index = wire_indexes[wire.id]
+            else:
+                source_index = _endpoint_index(wire.source_node, node_indexes, pixel_endpoints)
+            wire_source_indexes[wire.id] = source_index
             actual_wire_index = build.add_block(RtGBlock(
-                "Wire", _wire_connections(wire, node_indexes, pixel_endpoints, timeline_destinations)
+                "Wire", _wire_connections(
+                    wire, node_indexes, pixel_endpoints, timeline_destinations, source_index
+                )
             ))
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
@@ -294,7 +317,8 @@ def materialize_signal_plan(
         splitter.connections[0] = [endpoint.point_id, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])]
 
     materialized = MaterializedSignalPlan(
-        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations)
+        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations),
+        dict(wire_source_indexes)
     )
     errors = validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized)
     if errors:
@@ -322,15 +346,14 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
                 "Reason: Delayer signal fan-out belongs to Wire blocks, not Delayer."
             )
     for wire in analysis.wires:
-        index = materialized.wire_indexes[wire.id]
-        block = build.blocks[index]
-        if wire.id not in materialized.wire_indexes:
-            continue
-        expected = _wire_connections(
-            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations
-        )
         if wire.id in {item.id for item in materialized.timeline_destinations.values()}:
             continue
+        index = materialized.wire_indexes[wire.id]
+        block = build.blocks[index]
+        expected = _wire_connections(
+            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations,
+            materialized.wire_source_indexes[wire.id],
+        )
         if block.block_type != "Wire" or block.connections != expected:
             errors.append(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: {wire.id}\nExpected target: {expected}\nActual target: {block.connections}\nReason: Materialized endpoints differ from analysis plan.")
     for layer in analysis.pixel_layers:

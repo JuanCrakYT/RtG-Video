@@ -1,6 +1,7 @@
 """Regression tests for the analysis-first RtG video pipeline."""
 
 from pathlib import Path
+from collections import defaultdict
 
 import pytest
 
@@ -28,10 +29,12 @@ GREEN = (0, 255, 0)
 def _materialize(analysis):
     reset_uuid_manager()
     template = PixelTemplate(load_pixel_template_from_file(str(PIXEL_TEMPLATE)))
-    palettes = {(0, 0): {layer.color for layer in analysis.pixel_layers}}
+    palettes = defaultdict(set)
+    for layer in analysis.pixel_layers:
+        palettes[layer.position].add(layer.color)
     matrix = (
         MatrixBuilder()
-        .set_dimensions(1, 1)
+        .set_dimensions(analysis.width, analysis.height)
         .set_template(template)
         .set_palette_by_position(palettes)
         .build()
@@ -135,8 +138,37 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         ["1", destination.target_point, materialized.node_indexes[destination.target_node] + 1],
     ]
     assert materialized.wire_indexes[destination.id] == materialized.wire_indexes[timeline.id]
+    frame_zero_wires = [
+        wire for wire in analysis.wires
+        if wire.frame_index == 0 and wire.id not in reused_signal_wire_ids
+    ]
+    for previous, current in zip(frame_zero_wires, frame_zero_wires[1:]):
+        assert matrix.build.blocks[materialized.wire_indexes[current.id]].connections[0] == [
+            "3", "1", materialized.wire_indexes[previous.id] + 1
+        ]
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
         ["2", "4", materialized.wire_indexes[timeline.id] + 1]
+    ]
+
+
+def test_multiple_active_signals_form_a_wire_chain_from_one_delayer():
+    analysis = analyze_color_frames(
+        [[[RED, GREEN]], [[RED, GREEN]], [[RED, GREEN]]],
+        2, 1, frame_durations=[0.1, 0.1, 0.1],
+    )
+    matrix, _, materialized = _materialize(analysis)
+    reused = {wire.id for wire in materialized.timeline_destinations.values()}
+    frame_wires = [
+        wire for wire in analysis.wires
+        if wire.frame_index == 0 and wire.id not in reused
+    ]
+    assert len(frame_wires) >= 2
+    first, second = frame_wires[:2]
+    assert matrix.build.blocks[materialized.wire_indexes[first.id]].connections[0] == [
+        "3", "1", materialized.node_indexes["delayer:0"] + 1
+    ]
+    assert matrix.build.blocks[materialized.wire_indexes[second.id]].connections[0] == [
+        "3", "1", materialized.wire_indexes[first.id] + 1
     ]
 
 
