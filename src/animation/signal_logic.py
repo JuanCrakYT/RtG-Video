@@ -233,7 +233,13 @@ def materialize_signal_plan(
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
     # Preserve all signal Wires. A temporal Wire is deliberately separate:
     # its following Delayer references it at point 4.
-    timeline_destinations = {}
+    # Every temporal Wire must declare both physical endpoints: its source
+    # (the preceding Delayer or the final signal Wire of that frame) and the
+    # next Delayer input. Leaving this mapping empty emitted one-ended Wires
+    # that passed JSON validation but were physically loose in RtG.
+    timeline_destinations = {
+        wire.id: wire for wire in analysis.wires if wire.purpose == "timeline"
+    }
     skipped_wire_ids = set()
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
@@ -346,8 +352,6 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
             wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations,
             materialized.wire_source_links[wire.id],
         )
-        if wire.id in {item.id for item in materialized.timeline_destinations.values()}:
-            continue
         if block.block_type != "Wire" or block.connections != expected:
             errors.append(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: {wire.id}\nExpected target: {expected}\nActual target: {block.connections}\nReason: Materialized endpoints differ from analysis plan.")
     for layer in analysis.pixel_layers:
