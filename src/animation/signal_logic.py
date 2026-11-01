@@ -51,6 +51,7 @@ class MaterializedSignalPlan:
     node_indexes: Mapping[str, int]
     wire_indexes: Mapping[str, int]
     timeline_destinations: Mapping[str, PlannedWire]
+    wire_source_links: Mapping[str, Tuple[str, int]]
 
 
 def resolve_pixel_inputs(pixels: Iterable[object]) -> Dict[str, PixelSignalEndpoint]:
@@ -136,12 +137,18 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
     raise ValueError(f"[CONNECTION ERROR]\nComponent: Wire\nConnection point: endpoint\nExpected target: materialized node\nActual target: {node_id}\nReason: Missing physical binding.")
 
 
-def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline_destinations=None) -> List[List[object]]:
+def _wire_connections(
+    wire: PlannedWire, node_indexes, pixel_endpoints, timeline_destinations=None,
+    source_link: Tuple[str, int] | None = None,
+) -> List[List[object]]:
+    source_point, source_index = source_link or (
+        wire.source_point,
+        _endpoint_index(wire.source_node, node_indexes, pixel_endpoints),
+    )
     if wire.purpose == "timeline":
         connections = [[
             TIPOLOCAL_WIRE,
-            wire.source_point,
-            to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
+            source_point, to_rtg_index(source_index),
         ]]
         destination = (timeline_destinations or {}).get(wire.id)
         if destination is None:
@@ -165,10 +172,10 @@ def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints, timeline
         return [
             [TIPOLOCAL_WIRE, endpoint.anchor_point_id, to_rtg_index(endpoint.anchor_block_index)],
             [TIPOLOCAL_BUTTON, wire.source_point,
-             to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
+             to_rtg_index(source_index)],
         ]
     return [
-        [TIPOLOCAL_WIRE, wire.source_point, to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints))],
+        [TIPOLOCAL_WIRE, source_point, to_rtg_index(source_index)],
         [TIPOLOCAL_BUTTON, wire.target_point, to_rtg_index(_endpoint_index(wire.target_node, node_indexes, pixel_endpoints))],
     ]
 
@@ -220,7 +227,7 @@ def materialize_signal_plan(
             f"Actual target: {missing_layers[0]}\nReason: Build canvas does not contain the analysed colour layer."
         )
     if not analysis.included_frame_indices:
-        return MaterializedSignalPlan(-1, {}, {}, {})
+        return MaterializedSignalPlan(-1, {}, {}, {}, {})
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
@@ -240,13 +247,7 @@ def materialize_signal_plan(
         for wire in analysis.wires
         if wire.purpose == "timeline"
     }
-    first_signal_by_frame = {
-        frame_index: next(
-            (wire for wire in wires if wire.purpose == "pixel-signal" and wire.source_node == _delayer_id(frame_index)),
-            None,
-        )
-        for frame_index, wires in wires_by_frame.items()
-    }
+    wire_source_links = {}
     for frame in (frame for frame in analysis.frames if frame.included_in_build):
         delayer_id = _delayer_id(frame.index)
         connections = []
@@ -267,27 +268,28 @@ def materialize_signal_plan(
         ))
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
+        previous_delayer_wire = None
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
-            if wire.purpose == "timeline":
-                first_signal = first_signal_by_frame[frame.index]
-                if first_signal is not None:
-                    # Delayer -> first signal Wire -> temporal Wire -> next Delayer.
-                    # Other signal Wires still originate directly at Delayer.
-                    physical_source_index = wire_indexes[first_signal.id]
-                    wire_connections = _wire_connections(
-                        wire, node_indexes, pixel_endpoints, timeline_destinations
-                    )
-                    wire_connections[0][2] = to_rtg_index(physical_source_index)
-                else:
-                    wire_connections = _wire_connections(
-                        wire, node_indexes, pixel_endpoints, timeline_destinations
-                    )
-            else:
-                wire_connections = _wire_connections(
-                    wire, node_indexes, pixel_endpoints, timeline_destinations
+            if wire.source_node == delayer_id:
+                # First Wire leaves Delayer point 1. Every later direct Wire,
+                # including the final temporal Wire, leaves point 4 of the
+                # preceding Wire -- the exact pattern verified manually.
+                source_link = (
+                    ("1", node_indexes[delayer_id])
+                    if previous_delayer_wire is None
+                    else ("4", previous_delayer_wire)
                 )
+                previous_delayer_wire = wire_indexes[wire.id]
+            else:
+                source_link = (wire.source_point, _endpoint_index(
+                    wire.source_node, node_indexes, pixel_endpoints
+                ))
+            wire_source_links[wire.id] = source_link
+            wire_connections = _wire_connections(
+                wire, node_indexes, pixel_endpoints, timeline_destinations, source_link
+            )
             actual_wire_index = build.add_block(RtGBlock(
                 "Wire", wire_connections
             ))
@@ -309,7 +311,8 @@ def materialize_signal_plan(
         splitter.connections[0] = [endpoint.point_id, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])]
 
     materialized = MaterializedSignalPlan(
-        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations)
+        button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations),
+        dict(wire_source_links)
     )
     errors = validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized)
     if errors:
@@ -340,20 +343,9 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
         index = materialized.wire_indexes[wire.id]
         block = build.blocks[index]
         expected = _wire_connections(
-            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations
+            wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations,
+            materialized.wire_source_links[wire.id],
         )
-        if wire.purpose == "timeline":
-            first_signal = next(
-                (
-                    item for item in analysis.wires
-                    if item.frame_index == wire.frame_index
-                    and item.purpose == "pixel-signal"
-                    and item.source_node == _delayer_id(wire.frame_index)
-                ),
-                None,
-            )
-            if first_signal is not None:
-                expected[0][2] = to_rtg_index(materialized.wire_indexes[first_signal.id])
         if wire.id in {item.id for item in materialized.timeline_destinations.values()}:
             continue
         if block.block_type != "Wire" or block.connections != expected:
@@ -413,20 +405,23 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
         if len(block.connections) == 2:
             continue
         # A timeline Wire may be one-ended. Its following Delayer owns the
-        # reciprocal ["2", "4", Wire] connection.
+        # reciprocal ["2", "4", Wire]; it may leave the prior signal Wire
+        # through point 4.
         if len(block.connections) == 1:
             local_type, point_id, target_index = block.connections[0]
             if (
                 local_type == TIPOLOCAL_WIRE
-                and point_id == DELAYER_OUTPUT_POINT
                 and isinstance(target_index, int)
                 and 1 <= target_index <= len(build.blocks)
-                and build.blocks[target_index - 1].block_type in {"Delayer", "Wire"}
+                and (
+                    (point_id == DELAYER_OUTPUT_POINT and build.blocks[target_index - 1].block_type == "Delayer")
+                    or (point_id == WIRE_POINT_RIGHT and build.blocks[target_index - 1].block_type == "Wire")
+                )
             ):
                 continue
             errors.append(
-                f"Wire {index + 1}: one-ended temporal Wire must start at Delayer/Wire point "
-                f"{DELAYER_OUTPUT_POINT}"
+                f"Wire {index + 1}: one-ended temporal Wire must start at Delayer point "
+                f"{DELAYER_OUTPUT_POINT} or Wire point {WIRE_POINT_RIGHT}"
             )
             continue
         errors.append(f"Wire {index + 1}: expected one timeline endpoint or two signal endpoints")
