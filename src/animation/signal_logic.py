@@ -323,7 +323,6 @@ def build_animation_timeline(build: RtGBuild, frame_durations: Sequence[float], 
             previous = indexes[-2]
             wire_index = build.add_block(RtGBlock("Wire", [
                 [TIPOLOCAL_WIRE, DELAYER_OUTPUT_POINT, to_rtg_index(previous)],
-                [TIPOLOCAL_BUTTON, DELAYER_INPUT_POINT, to_rtg_index(indexes[-1])],
             ]))
             build.blocks[indexes[-1]].connections[0] = [TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_index)]
     return indexes
@@ -337,6 +336,26 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
         return [error]
     errors = []
     for index, block in enumerate(build.blocks):
-        if block.block_type == "Wire" and len(block.connections) != 2:
-            errors.append(f"Wire {index + 1}: expected exactly two endpoint connections")
+        if block.block_type != "Wire":
+            continue
+        if len(block.connections) == 2:
+            continue
+        # Timeline Wires are deliberately one-ended.  Their following
+        # Delayer owns the reciprocal ["2", "4", Wire] connection.
+        if len(block.connections) == 1:
+            local_type, point_id, target_index = block.connections[0]
+            if (
+                local_type == TIPOLOCAL_WIRE
+                and point_id == DELAYER_OUTPUT_POINT
+                and isinstance(target_index, int)
+                and 1 <= target_index <= len(build.blocks)
+                and build.blocks[target_index - 1].block_type == "Delayer"
+            ):
+                continue
+            errors.append(
+                f"Wire {index + 1}: one-ended Wire must start at Delayer point "
+                f"{DELAYER_OUTPUT_POINT}"
+            )
+            continue
+        errors.append(f"Wire {index + 1}: expected one timeline endpoint or two signal endpoints")
     return errors

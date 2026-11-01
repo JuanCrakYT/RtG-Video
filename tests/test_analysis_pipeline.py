@@ -7,6 +7,7 @@ import pytest
 from src.animation.signal_logic import (
     materialize_signal_plan,
     resolve_pixel_inputs,
+    validate_signal_connections,
     validate_materialized_signal_plan,
 )
 from src.display.matrix import MatrixBuilder
@@ -117,6 +118,7 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     for wire in analysis.wires:
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
         assert len(block.connections) == (1 if wire.purpose == "timeline" else 2)
+    assert not validate_signal_connections(matrix.build)
 
     timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
     timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
