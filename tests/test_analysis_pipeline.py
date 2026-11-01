@@ -141,7 +141,6 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     ]
 
 
-
 def test_signal_wire_chain_excludes_timeline_wire_and_prevents_feedback():
     analysis = analyze_color_frames(
         [
@@ -151,9 +150,9 @@ def test_signal_wire_chain_excludes_timeline_wire_and_prevents_feedback():
         ],
         2, 1, frame_durations=[0.1, 0.1, 0.1],
     )
-    matrix, _, materialized = _materialize(analysis)
+    matrix, endpoints, materialized = _materialize(analysis)
 
-    frame_zero_signal_wires = [
+    frame_zero_signal_wires = 
         wire for wire in analysis.wires
         if wire.frame_index == 0
         and wire.purpose == "pixel-signal"
@@ -189,8 +188,9 @@ def test_signal_wire_chain_excludes_timeline_wire_and_prevents_feedback():
     }
     assert not validate_signal_connections(matrix.build)
     assert not validate_materialized_signal_plan(
-        matrix.build, analysis, resolve_pixel_inputs(matrix.iter_pixels()), materialized
+        matrix.build, analysis, endpoints, materialized
     )
+
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
     reset_uuid_manager()
