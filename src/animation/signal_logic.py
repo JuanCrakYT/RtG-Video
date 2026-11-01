@@ -171,7 +171,7 @@ def _wire_connections(
         endpoint = pixel_endpoints[wire.target_node]
         return [
             [TIPOLOCAL_WIRE, endpoint.anchor_point_id, to_rtg_index(endpoint.anchor_block_index)],
-            [TIPOLOCAL_BUTTON, wire.source_point,
+            [TIPOLOCAL_BUTTON, source_point,
              to_rtg_index(source_index)],
         ]
     return [
