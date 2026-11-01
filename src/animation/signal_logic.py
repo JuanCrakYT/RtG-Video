@@ -186,6 +186,10 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     by_frame = defaultdict(list)
     for wire in analysis.wires:
         by_frame[wire.frame_index].append(wire)
+    # Signal Wires must physically precede the temporal Wire.  The temporal
+    # Wire is the final link that the next Delayer references.
+    for wires in by_frame.values():
+        wires.sort(key=lambda wire: wire.purpose == "timeline")
     node_indexes = {gate.id: gate_indexes[index] for index, gate in enumerate(analysis.gate_ors)}
     wire_indexes = {}
     next_index = len(build.blocks)
@@ -227,24 +231,10 @@ def materialize_signal_plan(
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    signal_wires_by_frame = defaultdict(list)
-    for wire in analysis.wires:
-        if wire.purpose != "timeline":
-            signal_wires_by_frame[wire.frame_index].append(wire)
-
-    # Reuse each timeline Wire's free endpoint for the first active signal of
-    # its frame.  This removes the auxiliary Part and the duplicate signal
-    # Wire.  Frames without an active destination remain one-ended.
+    # Keep all signal Wires.  The temporal Wire has no duplicate destination:
+    # it closes each frame's Wire chain and is consumed by the next Delayer.
     timeline_destinations = {}
     skipped_wire_ids = set()
-    for wire in analysis.wires:
-        if wire.purpose != "timeline":
-            continue
-        candidates = signal_wires_by_frame[wire.frame_index]
-        if candidates:
-            destination = candidates[0]
-            timeline_destinations[wire.id] = destination
-            skipped_wire_ids.add(destination.id)
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
         build, analysis, gate_indexes, skipped_wire_ids
@@ -278,19 +268,18 @@ def materialize_signal_plan(
         ))
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
-        previous_delayer_wire_index = None
+        previous_chain_wire_index = None
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
-            # A frame's Delayer feeds a serial Wire chain.  Only its first
-            # outgoing Wire originates at the Delayer; each following one
-            # originates at the preceding Wire (as observed in the game).
             source_index = None
             if wire.source_node == delayer_id:
-                source_index = previous_delayer_wire_index
-                if source_index is None:
-                    source_index = node_indexes[delayer_id]
-                previous_delayer_wire_index = wire_indexes[wire.id]
+                source_index = (
+                    previous_chain_wire_index
+                    if previous_chain_wire_index is not None
+                    else node_indexes[delayer_id]
+                )
+                previous_chain_wire_index = wire_indexes[wire.id]
             else:
                 source_index = _endpoint_index(wire.source_node, node_indexes, pixel_endpoints)
             wire_source_indexes[wire.id] = source_index
@@ -410,8 +399,9 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
             continue
         if len(block.connections) == 2:
             continue
-        # A timeline Wire may be one-ended for a black frame. Its following
-        # Delayer owns the reciprocal ["2", "4", Wire] connection.
+        # A timeline Wire may be one-ended.  Its following Delayer owns the
+        # reciprocal ["2", "4", Wire] connection; after active signals it
+        # starts at the final signal Wire rather than directly at a Delayer.
         if len(block.connections) == 1:
             local_type, point_id, target_index = block.connections[0]
             if (
@@ -419,11 +409,11 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                 and point_id == DELAYER_OUTPUT_POINT
                 and isinstance(target_index, int)
                 and 1 <= target_index <= len(build.blocks)
-                and build.blocks[target_index - 1].block_type == "Delayer"
+                and build.blocks[target_index - 1].block_type in {"Delayer", "Wire"}
             ):
                 continue
             errors.append(
-                f"Wire {index + 1}: one-ended Wire must start at Delayer point "
+                f"Wire {index + 1}: one-ended timeline Wire must start at Delayer/Wire point "
                 f"{DELAYER_OUTPUT_POINT}"
             )
             continue
