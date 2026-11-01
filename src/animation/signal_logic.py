@@ -136,6 +136,16 @@ def _endpoint_index(node_id: str, node_indexes: Mapping[str, int], pixel_endpoin
 
 
 def _wire_connections(wire: PlannedWire, node_indexes, pixel_endpoints) -> List[List[object]]:
+    # RtG represents the temporal chain asymmetrically: the Wire has only
+    # the prior Delayer endpoint, and the following Delayer refers back to
+    # that Wire at its point 4.  Adding a second Wire endpoint to the next
+    # Delayer creates a physical feedback loop in-game.
+    if wire.purpose == "timeline":
+        return [[
+            TIPOLOCAL_WIRE,
+            wire.source_point,
+            to_rtg_index(_endpoint_index(wire.source_node, node_indexes, pixel_endpoints)),
+        ]]
     # The Splitter_3 points to the Wire.  The Wire itself remains physically
     # anchored to the Stick/RemoteButton that was the Splitter's old parent.
     if wire.target_node in pixel_endpoints:
