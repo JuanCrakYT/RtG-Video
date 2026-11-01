@@ -115,9 +115,6 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     gates = [block for block in matrix.build.blocks if block.block_type == "Gate-OR"]
     assert len(gates) == 1
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
-    reused_signal_wire_ids = {
-        wire.id for wire in materialized.timeline_destinations.values()
-    }
     for wire in analysis.wires:
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
         # Every planned Wire, including temporal links, must have both ends.
