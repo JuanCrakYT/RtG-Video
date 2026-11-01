@@ -1083,10 +1083,7 @@ class RtGDisplayGUI:
                     from src.display.pixel import PixelTemplate
                     from src.rtg.format import load_pixel_template_from_file
                     from src.animation.signal_logic import (
-                        add_start_button,
-                        add_physical_gate_or_table,
-                        build_animation_timeline,
-                        build_signal_network,
+                        materialize_signal_plan,
                         resolve_pixel_inputs,
                         validate_signal_connections,
                     )
@@ -1104,19 +1101,19 @@ class RtGDisplayGUI:
                         video_path, width, height, palette
                     )
                     analysis = analyze_video_with_gate_or_planning(
-                        video_path, width, height, palette
+                        video_path, width, height, palette,
+                        color_frames=color_frames,
+                        frame_durations=[duration] * len(color_frames),
                     )
 
                     # Only create the required in-memory RtG build; never export it.
                     pixel_palettes = {
-                        (x, y): {
-                            tuple(int(channel) for channel in color_frame[y][x])
-                            for color_frame in color_frames
-                            if tuple(int(channel) for channel in color_frame[y][x]) != BLACK
-                        }
+                        (x, y): set()
                         for y in range(height)
                         for x in range(width)
                     }
+                    for layer in analysis.pixel_layers:
+                        pixel_palettes[layer.position].add(layer.color)
                     matrix = (
                         MatrixBuilder()
                         .set_dimensions(width, height)
@@ -1131,50 +1128,16 @@ class RtGDisplayGUI:
                         properties={"Activated": True, "RGB": [73, 26, 112]},
                     ))
 
-                    sequence = sequence_from_color_frames(matrix, duration, color_frames)
-                    start_button_index = add_start_button(matrix.build, matrix.base_index)
-                    gate_or_indexes = add_physical_gate_or_table(
-                        matrix.build, matrix.base_index, analysis.total_gate_ors_needed
-                    )
-                    timeline_delayer_indexes = build_animation_timeline(
-                        matrix.build,
-                        [frame.duration for frame in sequence.frames],
-                    )
-
-                    # Map each analyzed coordinate+color to its physical pixel UUID.
-                    position_to_uuid = {}
-                    for position, layers in matrix.pixel_layers.items():
-                        for layer in layers:
-                            splitter = next(
-                                (block for block in layer.blocks if block.block_type == "Splitter_3"),
-                                None,
-                            )
-                            if splitter is not None:
-                                rgb = tuple(splitter.properties.get("RGB", ()))
-                                if rgb != BLACK:
-                                    position_to_uuid.setdefault(position, {})[rgb] = layer.uuid
-
-                    pixel_color_frames = {}
-                    for pixel_analysis in analysis.pixel_analyses:
-                        layers_by_color = position_to_uuid.get(pixel_analysis.position, {})
-                        color_map = {}
-                        for usage in pixel_analysis.color_usages:
-                            pixel_uuid = layers_by_color.get(tuple(usage.color))
-                            if pixel_uuid is None:
-                                continue
-                            color_map.setdefault(pixel_uuid, {})[tuple(usage.color)] = [
-                                timeline_delayer_indexes[index] for index in usage.frames
-                            ]
-                        for pixel_uuid, color_map_for_pixel in color_map.items():
-                            pixel_color_frames.setdefault(pixel_uuid, {}).update(color_map_for_pixel)
-
-                    build_signal_network(
-                        matrix.build,
-                        pixel_color_frames,
-                        resolve_pixel_inputs(matrix.iter_pixels()),
-                        [frame.duration for frame in sequence.frames],
-                        gate_or_indexes,
-                        timeline_delayer_indexes,
+                    sequence = sequence_from_color_frames(matrix, analysis.frame_durations, color_frames)
+                    endpoint_by_uuid = resolve_pixel_inputs(matrix.iter_pixels())
+                    layer_endpoints = {}
+                    for layer in analysis.pixel_layers:
+                        pixel = matrix.get_pixel_for_color(*layer.position, layer.color)
+                        if pixel is None:
+                            raise ValueError(f"Missing analysed pixel layer: {layer.id}")
+                        layer_endpoints[layer.id] = endpoint_by_uuid[pixel.uuid]
+                    materialize_signal_plan(
+                        matrix.build, analysis, layer_endpoints, base_index=matrix.base_index
                     )
                     validation_errors = validate_signal_connections(matrix.build)
                     if validation_errors:

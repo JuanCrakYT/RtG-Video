@@ -378,6 +378,32 @@ def _plan_pixel_endpoints(matrix, analysis):
     return endpoints
 
 
+def _run_planned_color_demo(output_dir, progress_callback=None, block_callback=None):
+    """Keep the CLI demo on the same analysis-first path as real video."""
+    colors = [WHITE, BLACK, GRAY, WHITE, BLACK, GRAY, WHITE, BLACK]
+    color_frames = [[[color]] for color in colors]
+    analysis = analyze_color_frames(color_frames, 1, 1, frame_durations=[0.1] * len(colors))
+    export_analysis_json(analysis, str(Path(output_dir) / "data.json"))
+    reset_uuid_manager()
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(1, 1)
+        .set_spacing(DEFAULT_PIXEL_SPACING)
+        .set_template(load_real_pixel_template())
+        .set_palette_by_position({(0, 0): {layer.color for layer in analysis.pixel_layers}})
+        .build()
+    )
+    _add_canvas_gyro(matrix)
+    sequence = sequence_from_color_frames(matrix, analysis.frame_durations, color_frames)
+    materialize_signal_plan(
+        matrix.build, analysis, _plan_pixel_endpoints(matrix, analysis), base_index=matrix.base_index
+    )
+    errors = validate_signal_connections(matrix.build)
+    if errors:
+        raise ValueError(f"Signal validation failed: {errors}")
+    return CombinedExporter.export_complete(matrix, sequence, output_dir)
+
+
 def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None, block_callback=None):
     """Export one real pixel over eight black, white, and gray frames.
     
@@ -386,6 +412,10 @@ def run_color_demo(output_dir: str = "output/color_demo", progress_callback=None
         progress_callback: Optional callback(stage, status, current, total, detail)
         block_callback: Optional callback(blocks_current, blocks_total)
     """
+    # The historical demo used the old builder API.  Keep its public command,
+    # but ensure it exercises the same analysis/materialization boundary.
+    return _run_planned_color_demo(output_dir, progress_callback, block_callback)
+
     def report(stage, status=None, current=None, total=None, detail=None):
         if progress_callback:
             progress_callback(stage, status, current, total, detail)
@@ -513,6 +543,9 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
         progress_callback: Optional callback(stage, status, current, total, detail)
         block_callback: Optional callback(blocks_current, blocks_total)
     """
+    # Both public generation entry points must use the exact same pipeline.
+    return generate_canvas_build(settings, progress_callback, block_callback)
+
     def report(stage, status=None, current=None, total=None, detail=None):
         if progress_callback:
             progress_callback(stage, status, current, total, detail)
