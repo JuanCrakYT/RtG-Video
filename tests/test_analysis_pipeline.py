@@ -152,7 +152,7 @@ def test_signal_wire_chain_excludes_timeline_wire_and_prevents_feedback():
     )
     matrix, endpoints, materialized = _materialize(analysis)
 
-    frame_zero_signal_wires = 
+    frame_zero_signal_wires = [
         wire for wire in analysis.wires
         if wire.frame_index == 0
         and wire.purpose == "pixel-signal"
