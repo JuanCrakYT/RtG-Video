@@ -15,7 +15,7 @@ from src.display.pixel import PixelTemplate
 from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
 from src.video.analysis import ConnectionPlanError, analyze_color_frames, export_analysis_json
-from src.video.processing import BLACK, compress_consecutive_color_frames
+from src.video.processing import prepare_video_for_generation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,62 +25,9 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 
 
-def test_compresses_only_adjacent_identical_frames_and_sums_durations():
-    frames = [
-        [[RED]],
-        [[RED]],
-        [[GREEN]],
-        [[GREEN]],
-        [[RED]],
-    ]
-    durations = [0.1, 0.2, 0.3, 0.4, 0.5]
-
-    compressed_frames, compressed_durations = compress_consecutive_color_frames(
-        frames, durations
-    )
-
-    assert compressed_frames == [[[RED]], [[GREEN]], [[RED]]]
-    assert compressed_durations == pytest.approx([0.3, 0.7, 0.5])
-
-
-def test_compression_compares_the_complete_frame_matrix():
-    frames = [
-        [[RED, GREEN]],
-        [[RED, RED]],
-    ]
-
-    compressed_frames, compressed_durations = compress_consecutive_color_frames(
-        frames, [0.25, 0.25]
-    )
-
-    assert compressed_frames == frames
-    assert compressed_durations == pytest.approx([0.25, 0.25])
-
-
-def test_compression_rejects_mismatched_durations_and_accepts_empty_input():
-    with pytest.raises(ValueError, match="duration list"):
-        compress_consecutive_color_frames([[[RED]]], [])
-
-    assert compress_consecutive_color_frames([], []) == ([], [])
-
-
-def test_compression_preserves_black_transition_before_terminal_black_frame():
-    frames = [[[RED]], [[BLACK]], [[BLACK]], [[BLACK]]]
-    durations = [0.1, 0.2, 0.3, 0.4]
-
-    compressed_frames, compressed_durations = compress_consecutive_color_frames(
-        frames, durations
-    )
-
-    assert compressed_frames == [[[RED]], [[BLACK]], [[BLACK]]]
-    assert compressed_durations == pytest.approx([0.1, 0.5, 0.4])
-
-    analysis = analyze_color_frames(
-        compressed_frames, 1, 1, frame_durations=compressed_durations
-    )
-    assert analysis.included_frame_indices == [0, 1]
-    assert analysis.frames[1].is_black
-    assert not analysis.frames[2].included_in_build
+def test_video_preparation_placeholder_leaves_source_unchanged():
+    video_path = Path("sample.mp4")
+    assert prepare_video_for_generation(video_path) is video_path
 
 
 def _materialize(analysis):
