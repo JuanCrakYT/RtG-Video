@@ -10,12 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 import json
 
-from .processing import (
-    BLACK,
-    analyze_pixel_states,
-    analyze_video_colors,
-    compress_consecutive_color_frames,
-)
+from .processing import BLACK, analyze_pixel_states, analyze_video_colors
 
 
 RGBColor = Tuple[int, int, int]
@@ -364,13 +359,8 @@ def analyze_video_with_gate_or_planning(
 
     if color_frames is None:
         detected_duration, color_frames = analyze_video_colors(video_path, width, height, palette)
-        if frame_durations is None:
-            duration = detected_duration if frame_duration is None else frame_duration
-            frame_durations = [duration] * len(color_frames)
-        color_frames, frame_durations = compress_consecutive_color_frames(
-            color_frames, frame_durations
-        )
-        frame_duration = None
+        if frame_duration is None and frame_durations is None:
+            frame_duration = detected_duration
     return analyze_color_frames(color_frames, width, height, frame_duration=frame_duration, frame_durations=frame_durations)
 
 
