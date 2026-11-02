@@ -44,6 +44,8 @@ htmlcov/
 tmp/
 
 # Project specific
+output_test/
+output_test2/
 output/
 *.json.bak
 tmp/synthetic_test.mp4
