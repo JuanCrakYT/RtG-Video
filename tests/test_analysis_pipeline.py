@@ -109,7 +109,7 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     analysis = analyze_color_frames(
         [[[RED]], [[BLACK]], [[RED]]], 1, 1, frame_durations=[0.1, 0.2, 0.3]
     )
-    matrix, _, materialized = _materialize(analysis)
+    matrix, endpoints, materialized = _materialize(analysis)
     delayers = [block for block in matrix.build.blocks if block.block_type == "Delayer"]
     assert all(len(block.connections) == 1 for block in delayers)
     gates = [block for block in matrix.build.blocks if block.block_type == "Gate-OR"]
@@ -145,7 +145,7 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
         ["2", "4", materialized.wire_indexes[retained_timeline.id] + 1]
     ]
     assert not validate_materialized_signal_plan(
-        matrix.build, analysis, _, materialized
+        matrix.build, analysis, endpoints, materialized
     )
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
