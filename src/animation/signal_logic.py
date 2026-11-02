@@ -205,19 +205,83 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
 
 
 def _skipped_timeline_wire_ids(analysis: VideoAnalysisResult) -> set:
-    """Return timeline Wires replaced by the previous frame's final signal Wire."""
+    """Timeline Wires are always materialized as explicit fan-out destinations."""
 
-    return {
-        timeline.id
-        for timeline in analysis.wires
-        if timeline.purpose == "timeline"
-        and any(
-            wire.purpose == "pixel-signal"
-            and wire.source_node == timeline.source_node
-            and wire.frame_index == timeline.frame_index
-            for wire in analysis.wires
+    return set()
+
+
+def _materialize_delayer_fanout(
+    build: RtGBuild,
+    analysis: VideoAnalysisResult,
+    node_indexes: Mapping[str, int],
+    wire_indexes: Mapping[str, int],
+    wire_source_links: Dict[str, Tuple[str, int]],
+    pixel_endpoints: Mapping[str, PixelSignalEndpoint],
+) -> None:
+    """Fan out each Delayer through Splitter_3 blocks without sharing output ports.
+
+    A Wire output point can have only one child in the saved RtG builds.  The
+    old implementation chained several pixel Wires through point 4 while the
+    corresponding pixel Splitter_3 also referenced that same point.  A
+    Splitter_3 tree gives every outgoing signal its own physical output port.
+    """
+
+    output_points = ("5", "7", "9")
+
+    def add_splitter(parent_index: int, parent_point: str) -> int:
+        # Reserve the two indexes first so both sides of the connection can
+        # reference each other using RtG's one-based block indexes.
+        input_wire_index = build.add_block(RtGBlock(
+            "Wire",
+            connections=[
+                [TIPOLOCAL_WIRE, parent_point, to_rtg_index(parent_index)],
+            ],
+        ))
+        splitter_index = build.add_block(RtGBlock(
+            "Splitter_3",
+            connections=[["3", WIRE_POINT_RIGHT, to_rtg_index(input_wire_index)]],
+        ))
+        build.blocks[input_wire_index].connections.append([
+            TIPOLOCAL_BUTTON, "3", to_rtg_index(splitter_index)
+        ])
+        return splitter_index
+
+    def assign_outputs(splitter_index: int, pending: List[PlannedWire]) -> None:
+        # Keep one output free for a child Splitter_3 whenever more than three
+        # destinations remain.  Every physical output point is used once.
+        if len(pending) <= len(output_points):
+            for point, wire in zip(output_points, pending):
+                source_link = (point, splitter_index)
+                wire_source_links[wire.id] = source_link
+                build.blocks[wire_indexes[wire.id]].connections = _wire_connections(
+                    wire, node_indexes, pixel_endpoints, {}, source_link
+                )
+            return
+
+        for point, wire in zip(output_points[:2], pending[:2]):
+            source_link = (point, splitter_index)
+            wire_source_links[wire.id] = source_link
+            build.blocks[wire_indexes[wire.id]].connections = _wire_connections(
+                wire, node_indexes, pixel_endpoints, {}, source_link
+            )
+
+        child_input_point = output_points[2]
+        child_splitter = add_splitter(splitter_index, child_input_point)
+        assign_outputs(child_splitter, pending[2:])
+
+    for frame_index in analysis.included_frame_indices:
+        delayer_id = _delayer_id(frame_index)
+        outgoing = [
+            wire for wire in analysis.wires
+            if wire.source_node == delayer_id
+        ]
+        if len(outgoing) <= 1:
+            continue
+
+        root_splitter = add_splitter(
+            node_indexes[delayer_id], DELAYER_OUTPUT_POINT
         )
-    }
+        assign_outputs(root_splitter, outgoing)
 
 
 def materialize_signal_plan(
@@ -247,18 +311,14 @@ def materialize_signal_plan(
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    # Replace a timeline Wire with the previous frame's final signal Wire
-    # when that Delayer has a direct pixel-signal output. Otherwise retain
-    # the timeline Wire as the next Delayer's fallback input.
+    # Every planned Wire, including timeline links, remains an explicit
+    # destination. Delayer fan-out is handled by physical Splitter_3 trees.
     timeline_destinations = {}
-
-    skipped_wire_ids = _skipped_timeline_wire_ids(analysis)
+    skipped_wire_ids = set()
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
         build, analysis, gate_indexes, skipped_wire_ids
     )
-    for timeline_wire_id, destination in timeline_destinations.items():
-        wire_indexes[destination.id] = wire_indexes[timeline_wire_id]
 
     incoming_timeline = {
         wire.target_node: wire
@@ -274,23 +334,7 @@ def materialize_signal_plan(
         else:
             incoming = incoming_timeline[delayer_id]
 
-            if incoming.id in skipped_wire_ids:
-                previous_signal_wires = [
-                    wire for wire in wires_by_frame[incoming.frame_index]
-                    if wire.purpose == "pixel-signal"
-                    and wire.source_node == incoming.source_node
-                ]
-
-                if not previous_signal_wires:
-                    raise RuntimeError(
-                        f"Timeline Wire {incoming.id} was skipped, "
-                        "but no previous signal Wire was found."
-                    )
-
-                source_wire = previous_signal_wires[-1]
-                source_index = wire_indexes[source_wire.id]
-            else:
-                source_index = wire_indexes[incoming.id]
+            source_index = wire_indexes[incoming.id]
 
             connections.append([
                 TIPOLOCAL_DELAYER,
@@ -309,26 +353,10 @@ def materialize_signal_plan(
         ))
         if actual_index != node_indexes[delayer_id]:
             raise RuntimeError("Internal layout drift while materializing Delayers")
-        previous_delayer_wire = None
         for wire in wires_by_frame[frame.index]:
-            if wire.id in skipped_wire_ids:
-                continue
-            if wire.source_node == delayer_id and wire.purpose == "timeline":
-                # Retain timeline Wires only when the Delayer has no direct
-                # pixel-signal output for the following Delayer to reference.
-                source_link = (wire.source_point, node_indexes[delayer_id])
-            elif wire.source_node == delayer_id:
-                # Only pixel-signal Wires participate in the fan-out chain.
-                source_link = (
-                    ("1", node_indexes[delayer_id])
-                    if previous_delayer_wire is None
-                    else ("4", previous_delayer_wire)
-                )
-                previous_delayer_wire = wire_indexes[wire.id]
-            else:
-                source_link = (wire.source_point, _endpoint_index(
-                    wire.source_node, node_indexes, pixel_endpoints
-                ))
+            source_link = (wire.source_point, _endpoint_index(
+                wire.source_node, node_indexes, pixel_endpoints
+            ))
             wire_source_links[wire.id] = source_link
             wire_connections = _wire_connections(
                 wire, node_indexes, pixel_endpoints, timeline_destinations, source_link
@@ -338,6 +366,11 @@ def materialize_signal_plan(
             ))
             if actual_wire_index != wire_indexes[wire.id]:
                 raise RuntimeError("Internal layout drift while materializing Wires")
+
+    _materialize_delayer_fanout(
+        build, analysis, node_indexes, wire_indexes,
+        wire_source_links, pixel_endpoints,
+    )
 
     # A Splitter_3 has one active signal input. It points to the Wire; the
     # Wire preserves the template's old Stick/RemoteButton physical anchor.
