@@ -210,13 +210,13 @@ class PreviewServer:
         if not original_video.is_file():
             raise FileNotFoundError(original_video)
 
-        browser_video, browser_generated = self._prepare_browser_video(original_video)
-        video = prepare_video_for_generation(browser_video)
+        prepared_video = Path(prepare_video_for_generation(original_video)).resolve()
+        video, browser_generated = self._prepare_browser_video(prepared_video)
         generated = []
+        if prepared_video != original_video:
+            generated.append(prepared_video)
         if browser_generated is not None:
             generated.append(browser_generated)
-        if Path(video).resolve() != Path(browser_video).resolve():
-            generated.append(Path(video).resolve())
 
         token = token_urlsafe(24)
         self.videos[token] = Path(video).resolve()
