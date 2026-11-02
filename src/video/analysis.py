@@ -10,12 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 import json
 
-from .processing import (
-    BLACK,
-    analyze_pixel_states,
-    analyze_video_colors,
-    get_video_frame_durations,
-)
+from .processing import BLACK, analyze_pixel_states, analyze_video_colors
 
 
 RGBColor = Tuple[int, int, int]
@@ -365,16 +360,8 @@ def analyze_video_with_gate_or_planning(
     if color_frames is None:
         detected_duration, color_frames = analyze_video_colors(video_path, width, height, palette)
         if frame_duration is None and frame_durations is None:
-            frame_durations = get_video_frame_durations(
-                video_path, detected_duration, len(color_frames)
-            )
-    return analyze_color_frames(
-        color_frames,
-        width,
-        height,
-        frame_duration=frame_duration,
-        frame_durations=frame_durations,
-    )
+            frame_duration = detected_duration
+    return analyze_color_frames(color_frames, width, height, frame_duration=frame_duration, frame_durations=frame_durations)
 
 
 def _wire_to_dict(wire: PlannedWire) -> Dict[str, object]:
