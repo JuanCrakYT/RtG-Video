@@ -11,9 +11,6 @@ import mimetypes
 import os
 import subprocess
 import tempfile
-
-from ...video.processing import prepare_video_for_generation, release_prepared_video
-
 try:
     import cv2
 except ImportError:  # pragma: no cover - optional metadata enhancement
@@ -210,18 +207,11 @@ class PreviewServer:
         if not original_video.is_file():
             raise FileNotFoundError(original_video)
 
-        prepared_video = Path(prepare_video_for_generation(original_video)).resolve()
-        video, browser_generated = self._prepare_browser_video(prepared_video)
-        generated = []
-        if prepared_video != original_video:
-            generated.append(prepared_video)
-        if browser_generated is not None:
-            generated.append(browser_generated)
-
+        video, generated_video = self._prepare_browser_video(original_video)
         token = token_urlsafe(24)
-        self.videos[token] = Path(video).resolve()
-        if generated:
-            self.generated_videos[token] = generated
+        self.videos[token] = video
+        if generated_video is not None:
+            self.generated_videos[token] = generated_video
 
         fps = 0
         frame_count = 0
@@ -240,9 +230,9 @@ class PreviewServer:
     def release_video(self, token):
         self.videos.pop(token, None)
         self.video_metadata.pop(token, None)
-        generated_videos = self.generated_videos.pop(token, [])
-        for generated_video in generated_videos:
-            release_prepared_video(generated_video)
+        generated_video = self.generated_videos.pop(token, None)
+        if generated_video is not None:
+            generated_video.unlink(missing_ok=True)
 
     def url(self, token, width, height, palette):
         from urllib.parse import urlencode
@@ -279,9 +269,8 @@ class PreviewServer:
         self.videos.clear()
         self.video_metadata.clear()
         self.events.clear()
-        for generated_videos in self.generated_videos.values():
-            for generated_video in generated_videos:
-                release_prepared_video(generated_video)
+        for generated_video in self.generated_videos.values():
+            generated_video.unlink(missing_ok=True)
         self.generated_videos.clear()
         self.httpd.shutdown()
         self.httpd.server_close()
