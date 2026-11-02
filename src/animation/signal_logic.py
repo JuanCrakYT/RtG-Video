@@ -247,8 +247,9 @@ def materialize_signal_plan(
 
     button_index = add_start_button(build, base_index)
     gate_indexes = add_physical_gate_or_table(build, base_index, len(analysis.gate_ors))
-    # Preserve all signal Wires. A temporal Wire is deliberately separate:
-    # its following Delayer references it at point 4.
+    # Replace a timeline Wire with the previous frame's final signal Wire
+    # when that Delayer has a direct pixel-signal output. Otherwise retain
+    # the timeline Wire as the next Delayer's fallback input.
     timeline_destinations = {}
 
     skipped_wire_ids = _skipped_timeline_wire_ids(analysis)
@@ -313,9 +314,8 @@ def materialize_signal_plan(
             if wire.id in skipped_wire_ids:
                 continue
             if wire.source_node == delayer_id and wire.purpose == "timeline":
-                # Keep the timeline Wire for the following Delayer, but do not
-                # append it to the signal-Wire chain. It remains connected to
-                # the Delayer output and the next Delayer references this Wire.
+                # Retain timeline Wires only when the Delayer has no direct
+                # pixel-signal output for the following Delayer to reference.
                 source_link = (wire.source_point, node_indexes[delayer_id])
             elif wire.source_node == delayer_id:
                 # Only pixel-signal Wires participate in the fan-out chain.
