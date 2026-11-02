@@ -128,24 +128,45 @@ def analyze_video_colors(video_path, width: int, height: int, palette: Iterable[
 
 
 def compress_consecutive_color_frames(color_frames, frame_durations):
-    """Merge adjacent identical quantized frames and sum their durations.
+    """Merge adjacent identical frames without losing the terminal black sentinel.
 
-    The complete pixel matrix is compared. Repeated frames separated by a
-    different frame remain separate, preserving the original visual order.
+    The analysis pipeline excludes only the final black frame from the build.
+    When a video ends with multiple black frames, keep the last one separate:
+    the preceding black run still needs one Delayer to turn off active pixels.
     """
     if len(color_frames) != len(frame_durations):
         raise ValueError("Frame duration list must match analyzed frame count")
     if not color_frames:
         return [], []
 
+    trailing_black_count = 0
+    for frame in reversed(color_frames):
+        if all(tuple(color) == BLACK for row in frame for color in row):
+            trailing_black_count += 1
+        else:
+            break
+
+    # Preserve the final black frame as the excluded terminal sentinel.
+    # Any earlier consecutive black frames can still be merged into the
+    # included transition Delayer.
+    preserve_terminal_black = trailing_black_count > 1
+    merge_limit = len(color_frames) - 1 if preserve_terminal_black else len(color_frames)
+
     compressed_frames = [color_frames[0]]
     compressed_durations = [float(frame_durations[0])]
-    for frame, duration in zip(color_frames[1:], frame_durations[1:]):
+    for index in range(1, merge_limit):
+        frame = color_frames[index]
+        duration = frame_durations[index]
         if frame == compressed_frames[-1]:
             compressed_durations[-1] += float(duration)
         else:
             compressed_frames.append(frame)
             compressed_durations.append(float(duration))
+
+    if preserve_terminal_black:
+        compressed_frames.append(color_frames[-1])
+        compressed_durations.append(float(frame_durations[-1]))
+
     return compressed_frames, compressed_durations
 
 
