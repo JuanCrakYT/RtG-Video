@@ -78,7 +78,13 @@ def test_video_preparation_removes_only_adjacent_identical_frames(tmp_path):
         capture = cv2.VideoCapture(str(prepared))
         try:
             assert capture.isOpened()
-            assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 3
+            decoded_frames = 0
+            while True:
+                success, _ = capture.read()
+                if not success:
+                    break
+                decoded_frames += 1
+            assert decoded_frames == 3
         finally:
             capture.release()
 
