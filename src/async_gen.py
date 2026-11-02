@@ -484,6 +484,7 @@ class ProgressWindow:
             self.progress_bar['value'] = 0
         
         messagebox.showerror("Error de generación", error_msg, parent=self.window)
+        print(f"Generation error: {error_msg}")
     
     def _on_finished(self, update: ProgressUpdate):
         """Handle generation completion."""
