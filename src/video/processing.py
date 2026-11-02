@@ -1,5 +1,10 @@
 """Frame resizing and palette quantization helpers."""
 
+import atexit
+import os
+import subprocess
+import tempfile
+from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Sequence, Tuple
 
 import cv2
@@ -127,13 +132,153 @@ def analyze_video_colors(video_path, width: int, height: int, palette: Iterable[
 
 
 
-def prepare_video_for_generation(video_path):
-    """Placeholder for video preprocessing; currently leaves the source untouched.
+_PREPARED_VIDEO_FILES = set()
 
-    The normal analysis and RtG generation pipeline must receive the original
-    video until the video-only transformation is implemented here.
+
+def _cleanup_prepared_video_files():
+    for prepared_path in tuple(_PREPARED_VIDEO_FILES):
+        try:
+            Path(prepared_path).unlink(missing_ok=True)
+        finally:
+            _PREPARED_VIDEO_FILES.discard(prepared_path)
+
+
+atexit.register(_cleanup_prepared_video_files)
+
+
+def _duplicate_frame_ranges(video_path):
+    """Return adjacent duplicate frame ranges and the decoded frame count.
+
+    Equality is exact: every decoded pixel and channel must match the preceding
+    frame. Non-adjacent repetitions are deliberately kept.
     """
-    return video_path
+    capture = cv2.VideoCapture(str(video_path))
+    if not capture.isOpened():
+        raise ValueError(f"Could not open video: {video_path}")
+
+    duplicate_ranges = []
+    previous_frame = None
+    frame_index = 0
+    try:
+        while True:
+            success, frame = capture.read()
+            if not success:
+                break
+
+            if previous_frame is not None and np.array_equal(frame, previous_frame):
+                if duplicate_ranges and duplicate_ranges[-1][1] == frame_index - 1:
+                    duplicate_ranges[-1] = (duplicate_ranges[-1][0], frame_index)
+                else:
+                    duplicate_ranges.append((frame_index, frame_index))
+
+            previous_frame = frame.copy()
+            frame_index += 1
+    finally:
+        capture.release()
+
+    if frame_index == 0:
+        raise ValueError(f"Video contains no readable frames: {video_path}")
+    return duplicate_ranges, frame_index
+
+
+def prepare_video_for_generation(video_path):
+    """Remove adjacent, pixel-identical frames from a temporary video copy.
+
+    Original frame timestamps are retained, so a kept frame occupies the time
+    span of the duplicate frames that follow it. The source file is never
+    modified. If no adjacent duplicates exist, the original path is returned.
+    """
+    source = Path(video_path).expanduser().resolve()
+    if not source.is_file():
+        raise FileNotFoundError(source)
+
+    duplicate_ranges, total_frames = _duplicate_frame_ranges(source)
+    if not duplicate_ranges:
+        return video_path
+
+    try:
+        import imageio_ffmpeg
+    except ImportError as exc:
+        raise RuntimeError(
+            "Removing duplicate video frames requires imageio-ffmpeg. "
+            "Install the project requirements and try again."
+        ) from exc
+
+    drop_expression = "+".join(
+        f"eq(n\\,{start})" if start == end
+        else f"between(n\\,{start}\\,{end})"
+        for start, end in duplicate_ranges
+    )
+    filter_script = (
+        f"[0:v:0]select='not({drop_expression})'[prepared_video]\n"
+    )
+
+    output_fd, output_name = tempfile.mkstemp(
+        prefix="rtg-prepared-", suffix=".mp4"
+    )
+    os.close(output_fd)
+    output = Path(output_name)
+
+    script_fd, script_name = tempfile.mkstemp(
+        prefix="rtg-frame-selection-", suffix=".ffscript"
+    )
+    os.close(script_fd)
+    script_path = Path(script_name)
+
+    try:
+        script_path.write_text(filter_script, encoding="utf-8")
+        command = [
+            imageio_ffmpeg.get_ffmpeg_exe(),
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(source),
+            "-filter_complex_script", str(script_path),
+            "-map", "[prepared_video]",
+            "-map", "0:a?",
+            "-map_metadata", "0",
+            "-map_chapters", "0",
+            "-fps_mode:v", "vfr",
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            str(output),
+        ]
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=1800,
+        )
+
+        if not output.is_file() or output.stat().st_size == 0:
+            raise RuntimeError("FFmpeg produced an empty prepared video")
+
+        verification = cv2.VideoCapture(str(output))
+        try:
+            output_frames = int(verification.get(cv2.CAP_PROP_FRAME_COUNT))
+            if not verification.isOpened() or output_frames != total_frames - sum(
+                end - start + 1 for start, end in duplicate_ranges
+            ):
+                raise RuntimeError(
+                    "Prepared video frame count does not match the duplicate-frame plan"
+                )
+        finally:
+            verification.release()
+
+        _PREPARED_VIDEO_FILES.add(str(output))
+        return output
+    except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
+        output.unlink(missing_ok=True)
+        details = getattr(exc, "stderr", "") or str(exc)
+        raise RuntimeError(
+            f"Could not remove consecutive duplicate frames: {details[-1600:]}"
+        ) from exc
+    finally:
+        script_path.unlink(missing_ok=True)
 
 
 def sequence_from_color_frames(matrix, duration, color_frames):
