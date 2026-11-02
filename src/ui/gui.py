@@ -1090,6 +1090,7 @@ class RtGDisplayGUI:
                     from src.video.processing import (
                         BLACK,
                         analyze_video_colors,
+                        compress_consecutive_color_frames,
                         sequence_from_color_frames,
                     )
                     from src.video.analysis import analyze_video_with_gate_or_planning
@@ -1100,10 +1101,13 @@ class RtGDisplayGUI:
                     duration, color_frames = analyze_video_colors(
                         video_path, width, height, palette
                     )
+                    color_frames, frame_durations = compress_consecutive_color_frames(
+                        color_frames, [duration] * len(color_frames)
+                    )
                     analysis = analyze_video_with_gate_or_planning(
                         video_path, width, height, palette,
                         color_frames=color_frames,
-                        frame_durations=[duration] * len(color_frames),
+                        frame_durations=frame_durations,
                     )
 
                     # Only create the required in-memory RtG build; never export it.
