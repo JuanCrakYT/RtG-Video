@@ -564,6 +564,10 @@ def validate_signal_connections(build: RtGBuild) -> List[str]:
                 and (
                     (point_id == DELAYER_OUTPUT_POINT and build.blocks[target_index - 1].block_type == "Delayer")
                     or (point_id == WIRE_POINT_RIGHT and build.blocks[target_index - 1].block_type == "Wire")
+                    or (
+                        point_id in {"5", "7", "9"}
+                        and build.blocks[target_index - 1].block_type == "Splitter_3"
+                    )
                 )
             ):
                 continue
