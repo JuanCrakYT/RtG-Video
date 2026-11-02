@@ -16,6 +16,7 @@ from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
 from src.video.analysis import ConnectionPlanError, analyze_color_frames, export_analysis_json
 from src.video.processing import (
+    BLACK,
     get_video_frame_durations,
     prepare_video_for_generation,
     release_prepared_video,
