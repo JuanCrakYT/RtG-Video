@@ -30,11 +30,24 @@ GREEN = (0, 255, 0)
 
 
 def test_video_preparation_returns_original_when_no_adjacent_duplicates(tmp_path):
-    video_path = tmp_path / "unchanged.mp4"
-    video_path.write_bytes(b"not decoded because the test only checks the no-op path")
-    # A missing/invalid source must still be rejected instead of silently skipped.
-    with pytest.raises(ValueError):
-        prepare_video_for_generation(video_path)
+    import cv2
+    import numpy as np
+
+    video_path = tmp_path / "unique.avi"
+    writer = cv2.VideoWriter(
+        str(video_path),
+        cv2.VideoWriter_fourcc(*"MJPG"),
+        10.0,
+        (16, 16),
+    )
+    if not writer.isOpened():
+        pytest.skip("OpenCV MJPG encoder is unavailable")
+
+    writer.write(np.zeros((16, 16, 3), dtype=np.uint8))
+    writer.write(np.full((16, 16, 3), 255, dtype=np.uint8))
+    writer.release()
+
+    assert prepare_video_for_generation(video_path) is video_path
 
 
 def test_video_preparation_removes_only_adjacent_identical_frames(tmp_path):
