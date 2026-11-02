@@ -234,7 +234,18 @@ def materialize_signal_plan(
     # Preserve all signal Wires. A temporal Wire is deliberately separate:
     # its following Delayer references it at point 4.
     timeline_destinations = {}
-    skipped_wire_ids = set()
+
+    skipped_wire_ids = {
+        timeline.id
+        for timeline in analysis.wires
+        if timeline.purpose == "timeline"
+        and any(
+            wire.purpose == "pixel-signal"
+            and wire.source_node == timeline.source_node
+            and wire.frame_index == timeline.frame_index
+            for wire in analysis.wires
+        )
+    }
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
         build, analysis, gate_indexes, skipped_wire_ids
@@ -255,7 +266,30 @@ def materialize_signal_plan(
             connections.append([TIPOLOCAL_DELAYER, "2", to_rtg_index(button_index)])
         else:
             incoming = incoming_timeline[delayer_id]
-            connections.append([TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(wire_indexes[incoming.id])])
+
+            if incoming.id in skipped_wire_ids:
+                previous_signal_wires = [
+                    wire for wire in wires_by_frame[incoming.frame_index]
+                    if wire.purpose == "pixel-signal"
+                    and wire.source_node == incoming.source_node
+                ]
+
+                if not previous_signal_wires:
+                    raise RuntimeError(
+                        f"Timeline Wire {incoming.id} was skipped, "
+                        "but no previous signal Wire was found."
+                    )
+
+                source_wire = previous_signal_wires[-1]
+                source_index = wire_indexes[source_wire.id]
+            else:
+                source_index = wire_indexes[incoming.id]
+
+            connections.append([
+                TIPOLOCAL_DELAYER,
+                WIRE_POINT_RIGHT,
+                to_rtg_index(source_index)
+            ])
         actual_index = build.add_block(RtGBlock(
             "Delayer",
             connections=connections,
