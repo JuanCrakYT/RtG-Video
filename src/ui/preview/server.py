@@ -12,7 +12,7 @@ import os
 import subprocess
 import tempfile
 
-from ...video.processing import prepare_video_for_generation
+from ...video.processing import prepare_video_for_generation, release_prepared_video
 
 try:
     import cv2
@@ -242,7 +242,7 @@ class PreviewServer:
         self.video_metadata.pop(token, None)
         generated_videos = self.generated_videos.pop(token, [])
         for generated_video in generated_videos:
-            generated_video.unlink(missing_ok=True)
+            release_prepared_video(generated_video)
 
     def url(self, token, width, height, palette):
         from urllib.parse import urlencode
@@ -281,7 +281,7 @@ class PreviewServer:
         self.events.clear()
         for generated_videos in self.generated_videos.values():
             for generated_video in generated_videos:
-                generated_video.unlink(missing_ok=True)
+                release_prepared_video(generated_video)
         self.generated_videos.clear()
         self.httpd.shutdown()
         self.httpd.server_close()
