@@ -126,6 +126,28 @@ def analyze_video_colors(video_path, width: int, height: int, palette: Iterable[
     return duration, frames
 
 
+def compress_consecutive_color_frames(color_frames, frame_durations):
+    """Merge consecutive identical quantized frames and sum their durations.
+
+    Equality is checked across the complete pixel matrix. Non-consecutive
+    repetitions remain separate so every visual transition is preserved.
+    """
+    if len(color_frames) != len(frame_durations):
+        raise ValueError("Frame duration list must match analyzed frame count")
+    if not color_frames:
+        return [], []
+
+    compressed_frames = [color_frames[0]]
+    compressed_durations = [float(frame_durations[0])]
+    for frame, duration in zip(color_frames[1:], frame_durations[1:]):
+        if frame == compressed_frames[-1]:
+            compressed_durations[-1] += float(duration)
+        else:
+            compressed_frames.append(frame)
+            compressed_durations.append(float(duration))
+    return compressed_frames, compressed_durations
+
+
 def sequence_from_color_frames(matrix, duration, color_frames):
     """Map analyzed colours to physical pixels without recalculating frames.
 

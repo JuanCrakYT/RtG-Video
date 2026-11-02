@@ -14,8 +14,13 @@ from src.display.matrix import MatrixBuilder
 from src.display.pixel import PixelTemplate
 from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
-from src.video.analysis import ConnectionPlanError, analyze_color_frames, export_analysis_json
-from src.video.processing import BLACK
+from src.video.analysis import (
+    ConnectionPlanError,
+    analyze_color_frames,
+    analyze_video_with_gate_or_planning,
+    export_analysis_json,
+)
+from src.video.processing import BLACK, compress_consecutive_color_frames
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -204,3 +209,43 @@ def test_invalid_connection_plan_aborts_before_build():
     with pytest.raises(ConnectionPlanError, match=r"\[CONNECTION ERROR\]") as error:
         export_analysis_json(analysis, "unused.json")
     assert "Connection point: target point" in str(error.value)
+
+
+def test_consecutive_identical_frames_are_compressed_and_durations_are_summed():
+    frames = [
+        [[RED]], [[RED]],
+        [[GREEN]], [[GREEN]],
+        [[BLACK]], [[BLACK]],
+        [[RED]],
+    ]
+    durations = [0.33] * len(frames)
+
+    compressed_frames, compressed_durations = compress_consecutive_color_frames(
+        frames, durations
+    )
+
+    assert compressed_frames == [[[RED]], [[GREEN]], [[BLACK]], [[RED]]]
+    assert compressed_durations == pytest.approx([0.66, 0.66, 0.66, 0.33])
+
+    analysis = analyze_video_with_gate_or_planning(
+        "unused", 1, 1, [], color_frames=frames, frame_durations=durations
+    )
+    assert len(analysis.frames) == 4
+    assert [frame.duration for frame in analysis.frames] == pytest.approx(
+        [0.66, 0.66, 0.66, 0.33]
+    )
+
+
+def test_frames_with_one_different_pixel_are_not_compressed():
+    frames = [
+        [[RED, RED]],
+        [[RED, GREEN]],
+        [[RED, GREEN]],
+    ]
+
+    compressed_frames, compressed_durations = compress_consecutive_color_frames(
+        frames, [0.1, 0.2, 0.3]
+    )
+
+    assert compressed_frames == frames[:2]
+    assert compressed_durations == pytest.approx([0.1, 0.5])
