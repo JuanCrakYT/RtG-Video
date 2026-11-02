@@ -32,6 +32,7 @@ from src.video.processing import (
     GRAY,
     analyze_pixel_color_usage,
     analyze_video_colors,
+    get_video_frame_durations,
     prepare_video_for_generation,
     sequence_from_color_frames,
     video_to_sequence,
@@ -206,7 +207,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             int(settings["height"]),
             palette,
         )
-        frame_durations = [duration] * len(color_frames)
+        frame_durations = get_video_frame_durations(video_path, duration, len(color_frames))
         report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
         
         report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
