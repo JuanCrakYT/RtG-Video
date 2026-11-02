@@ -779,8 +779,9 @@ def main():
         print(f"Canvas: {args.width}x{args.height}")
         print(f"Palette: {palette}")
         
+        video_path = prepare_video_for_generation(args.video)
         analysis = analyze_video_with_gate_or_planning(
-            args.video, args.width, args.height, palette
+            video_path, args.width, args.height, palette
         )
         
         output_file = Path(args.output) / "analysis.json"
