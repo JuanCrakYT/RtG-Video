@@ -32,6 +32,7 @@ from src.video.processing import (
     GRAY,
     analyze_pixel_color_usage,
     analyze_video_colors,
+    compress_consecutive_color_frames,
     sequence_from_color_frames,
     video_to_sequence,
 )
@@ -204,13 +205,16 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             int(settings["height"]),
             palette,
         )
+        color_frames, frame_durations = compress_consecutive_color_frames(
+            color_frames, [duration] * len(color_frames)
+        )
         report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
         
         report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
         export_speed = float(settings.get("export_speed", 1.0))
         if export_speed <= 0:
             raise ValueError("export_speed must be greater than zero")
-        frame_durations = [duration / export_speed] * len(color_frames)
+        frame_durations = [frame_duration / export_speed for frame_duration in frame_durations]
         analysis = analyze_video_with_gate_or_planning(
             settings["video"],
             int(settings["width"]),
@@ -567,6 +571,9 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     duration, color_frames = analyze_video_colors(
         settings["video"], settings["width"], settings["height"], palette
     )
+    color_frames, frame_durations = compress_consecutive_color_frames(
+        color_frames, [duration] * len(color_frames)
+    )
     report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
     
     report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
@@ -576,7 +583,7 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
         settings["height"],
         palette,
         color_frames=color_frames,
-        frame_duration=duration,
+        frame_durations=frame_durations,
     )
     export_analysis_json(
         analysis,
@@ -608,8 +615,8 @@ def generate_video_build(settings, progress_callback=None, block_callback=None):
     
     report(GenerationStage.TIMELINE, "active", 25, 100, "Generando secuencia de frames...")
     export_speed = settings.get("export_speed", 1.0)
-    adjusted_duration = duration / export_speed
-    sequence = sequence_from_color_frames(matrix, adjusted_duration, color_frames)
+    adjusted_durations = [frame_duration / export_speed for frame_duration in analysis.frame_durations]
+    sequence = sequence_from_color_frames(matrix, adjusted_durations, color_frames)
     
     report(GenerationStage.TIMELINE, "active", 50, 100, "Calculando Gate-ORs necesarios desde análisis de color...")
     gate_or_count = analysis.total_gate_ors_needed
