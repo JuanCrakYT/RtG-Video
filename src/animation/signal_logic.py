@@ -204,6 +204,22 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     return node_indexes, wire_indexes, by_frame
 
 
+def _skipped_timeline_wire_ids(analysis: VideoAnalysisResult) -> set:
+    """Return timeline Wires replaced by the previous frame's final signal Wire."""
+
+    return {
+        timeline.id
+        for timeline in analysis.wires
+        if timeline.purpose == "timeline"
+        and any(
+            wire.purpose == "pixel-signal"
+            and wire.source_node == timeline.source_node
+            and wire.frame_index == timeline.frame_index
+            for wire in analysis.wires
+        )
+    }
+
+
 def materialize_signal_plan(
     build: RtGBuild,
     analysis: VideoAnalysisResult,
@@ -235,17 +251,7 @@ def materialize_signal_plan(
     # its following Delayer references it at point 4.
     timeline_destinations = {}
 
-    skipped_wire_ids = {
-        timeline.id
-        for timeline in analysis.wires
-        if timeline.purpose == "timeline"
-        and any(
-            wire.purpose == "pixel-signal"
-            and wire.source_node == timeline.source_node
-            and wire.frame_index == timeline.frame_index
-            for wire in analysis.wires
-        )
-    }
+    skipped_wire_ids = _skipped_timeline_wire_ids(analysis)
 
     node_indexes, wire_indexes, wires_by_frame = _planned_layout(
         build, analysis, gate_indexes, skipped_wire_ids
@@ -351,14 +357,21 @@ def materialize_signal_plan(
         button_index, dict(node_indexes), dict(wire_indexes), dict(timeline_destinations),
         dict(wire_source_links)
     )
-    errors = validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized)
+    errors = validate_materialized_signal_plan(
+        build, analysis, pixel_endpoints, materialized, skipped_wire_ids
+    )
     if errors:
         raise ValueError("\n".join(errors))
     return materialized
 
 
-def validate_materialized_signal_plan(build, analysis, pixel_endpoints, materialized) -> List[str]:
+def validate_materialized_signal_plan(
+    build, analysis, pixel_endpoints, materialized, skipped_wire_ids=None
+) -> List[str]:
     """Verify that physical JSON represents precisely the already-planned wires."""
+
+    if skipped_wire_ids is None:
+        skipped_wire_ids = _skipped_timeline_wire_ids(analysis)
 
     errors = []
     valid_json, json_error = validate_build_json(build.to_json())
@@ -376,8 +389,73 @@ def validate_materialized_signal_plan(build, analysis, pixel_endpoints, material
                 f"Actual target: {block.connections}\n"
                 "Reason: Delayer signal fan-out belongs to Wire blocks, not Delayer."
             )
+            continue
+
+        delayer_id = _delayer_id(frame.index)
+        if delayer_id == analysis.start_target:
+            expected_input = [
+                TIPOLOCAL_DELAYER, "2", to_rtg_index(materialized.button_index)
+            ]
+        else:
+            incoming = next(
+                (wire for wire in analysis.wires
+                 if wire.purpose == "timeline" and wire.target_node == delayer_id),
+                None,
+            )
+            if incoming is None:
+                errors.append(
+                    f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: timeline\n"
+                    f"Expected target: incoming timeline Wire for {delayer_id}\n"
+                    "Actual target: none\nReason: Missing logical timeline connection."
+                )
+                continue
+
+            if incoming.id in skipped_wire_ids:
+                previous_signal_wires = [
+                    wire for wire in analysis.wires
+                    if wire.frame_index == incoming.frame_index
+                    and wire.purpose == "pixel-signal"
+                    and wire.source_node == incoming.source_node
+                ]
+                if not previous_signal_wires:
+                    errors.append(
+                        f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: timeline\n"
+                        f"Expected target: final signal Wire replacing {incoming.id}\n"
+                        "Actual target: none\nReason: Skipped timeline Wire has no replacement."
+                    )
+                    continue
+                source_wire = previous_signal_wires[-1]
+                source_index = materialized.wire_indexes.get(source_wire.id)
+            else:
+                source_index = materialized.wire_indexes.get(incoming.id)
+
+            if source_index is None:
+                errors.append(
+                    f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: timeline\n"
+                    f"Expected target: materialized Wire for {incoming.id}\n"
+                    "Actual target: missing index\nReason: Timeline input target was not materialized."
+                )
+                continue
+            expected_input = [
+                TIPOLOCAL_DELAYER, WIRE_POINT_RIGHT, to_rtg_index(source_index)
+            ]
+
+        if block.connections[0] != expected_input:
+            errors.append(
+                f"[CONNECTION ERROR]\nComponent: Delayer\nConnection point: timeline\n"
+                f"Expected target: {expected_input}\nActual target: {block.connections[0]}\n"
+                "Reason: Delayer does not reference the expected previous-frame Wire."
+            )
     for wire in analysis.wires:
-        index = materialized.wire_indexes[wire.id]
+        if wire.id in skipped_wire_ids:
+            continue
+        index = materialized.wire_indexes.get(wire.id)
+        if index is None:
+            errors.append(f"Missing materialized Wire index: {wire.id}")
+            continue
+        if wire.id not in materialized.wire_source_links:
+            errors.append(f"Missing materialized Wire source link: {wire.id}")
+            continue
         block = build.blocks[index]
         expected = _wire_connections(
             wire, materialized.node_indexes, pixel_endpoints, materialized.timeline_destinations,
