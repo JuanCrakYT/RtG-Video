@@ -1661,7 +1661,7 @@ class RtGDisplayGUI:
         """Update the preview frame counter label."""
         if self.preview_counter_label is not None and self.preview_window is not None and self.preview_window.winfo_exists():
             total = self.preview_total_frames if self.preview_total_frames > 0 else "?"
-            self.preview_counter_label.config(text=f"Frame: {frame_number} / {total}")
+            self.preview_counter_label.config(text=f"Frame: {frame_number + 1} / {total}")
 
     def _open_video_preview(self, video_path: Path):
         """Open a separate window that replays the video as a low-resolution RtG pixel preview."""
