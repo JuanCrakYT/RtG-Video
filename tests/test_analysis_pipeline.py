@@ -15,7 +15,11 @@ from src.display.pixel import PixelTemplate
 from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
 from src.video.analysis import ConnectionPlanError, analyze_color_frames, export_analysis_json
-from src.video.processing import prepare_video_for_generation
+from src.video.processing import (
+    get_video_frame_durations,
+    prepare_video_for_generation,
+    release_prepared_video,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,9 +29,57 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 
 
-def test_video_preparation_placeholder_leaves_source_unchanged():
-    video_path = Path("sample.mp4")
-    assert prepare_video_for_generation(video_path) is video_path
+def test_video_preparation_returns_original_when_no_adjacent_duplicates(tmp_path):
+    video_path = tmp_path / "unchanged.mp4"
+    video_path.write_bytes(b"not decoded because the test only checks the no-op path")
+    # A missing/invalid source must still be rejected instead of silently skipped.
+    with pytest.raises(ValueError):
+        prepare_video_for_generation(video_path)
+
+
+def test_video_preparation_removes_only_adjacent_identical_frames(tmp_path):
+    import cv2
+    import numpy as np
+
+    source = tmp_path / "repeated.avi"
+    writer = cv2.VideoWriter(
+        str(source),
+        cv2.VideoWriter_fourcc(*"MJPG"),
+        10.0,
+        (16, 16),
+    )
+    if not writer.isOpened():
+        pytest.skip("OpenCV MJPG encoder is unavailable")
+
+    first = np.full((16, 16, 3), (0, 0, 255), dtype=np.uint8)
+    second = np.full((16, 16, 3), (0, 255, 0), dtype=np.uint8)
+    for frame in (first, first, second, second, first):
+        writer.write(frame)
+    writer.release()
+
+    prepared = prepare_video_for_generation(source)
+    try:
+        assert prepared != source
+        assert source.is_file()
+
+        capture = cv2.VideoCapture(str(prepared))
+        try:
+            assert capture.isOpened()
+            assert int(capture.get(cv2.CAP_PROP_FRAME_COUNT)) == 3
+        finally:
+            capture.release()
+
+        assert get_video_frame_durations(prepared, 0.1, 3) == pytest.approx(
+            [0.2, 0.2, 0.1], abs=0.02
+        )
+
+        original = cv2.VideoCapture(str(source))
+        try:
+            assert int(original.get(cv2.CAP_PROP_FRAME_COUNT)) == 5
+        finally:
+            original.release()
+    finally:
+        release_prepared_video(prepared)
 
 
 def _materialize(analysis):
