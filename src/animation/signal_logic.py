@@ -186,8 +186,8 @@ def _planned_layout(build: RtGBuild, analysis: VideoAnalysisResult, gate_indexes
     by_frame = defaultdict(list)
     for wire in analysis.wires:
         by_frame[wire.frame_index].append(wire)
-    # A temporal Wire is emitted after the frame's signal Wires so it can be
-    # attached to the first signal Wire without changing any other fan-out.
+    # Keep signal Wires before the timeline Wire for stable, readable output.
+    # Delayer fan-out is materialized separately through Splitter_3 blocks.
     for wires in by_frame.values():
         wires.sort(key=lambda wire: wire.purpose == "timeline")
     node_indexes = {gate.id: gate_indexes[index] for index, gate in enumerate(analysis.gate_ors)}
