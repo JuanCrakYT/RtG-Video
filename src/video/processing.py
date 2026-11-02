@@ -300,12 +300,21 @@ def prepare_video_for_generation(video_path):
 
         verification = cv2.VideoCapture(str(output))
         try:
-            output_frames = int(verification.get(cv2.CAP_PROP_FRAME_COUNT))
-            if not verification.isOpened() or output_frames != total_frames - sum(
+            if not verification.isOpened():
+                raise RuntimeError("FFmpeg output could not be reopened")
+            output_frames = 0
+            while True:
+                success, _ = verification.read()
+                if not success:
+                    break
+                output_frames += 1
+            expected_frames = total_frames - sum(
                 end - start + 1 for start, end in duplicate_ranges
-            ):
+            )
+            if output_frames != expected_frames:
                 raise RuntimeError(
-                    "Prepared video frame count does not match the duplicate-frame plan"
+                    "Prepared video frame count does not match the duplicate-frame plan "
+                    f"(expected {expected_frames}, got {output_frames})"
                 )
         finally:
             verification.release()
