@@ -272,10 +272,13 @@ def materialize_signal_plan(
         for wire in wires_by_frame[frame.index]:
             if wire.id in skipped_wire_ids:
                 continue
-            if wire.source_node == delayer_id:
-                # First Wire leaves Delayer point 1. Every later direct Wire,
-                # including the final temporal Wire, leaves point 4 of the
-                # preceding Wire -- the exact pattern verified manually.
+            if wire.source_node == delayer_id and wire.purpose == "timeline":
+                # Keep the timeline Wire for the following Delayer, but do not
+                # append it to the signal-Wire chain. It remains connected to
+                # the Delayer output and the next Delayer references this Wire.
+                source_link = (wire.source_point, node_indexes[delayer_id])
+            elif wire.source_node == delayer_id:
+                # Only pixel-signal Wires participate in the fan-out chain.
                 source_link = (
                     ("1", node_indexes[delayer_id])
                     if previous_delayer_wire is None
