@@ -32,7 +32,7 @@ from src.video.processing import (
     GRAY,
     analyze_pixel_color_usage,
     analyze_video_colors,
-    compress_consecutive_color_frames,
+    prepare_video_for_generation,
     sequence_from_color_frames,
     video_to_sequence,
 )
@@ -199,15 +199,14 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
     
     if settings.get("video"):
         report(GenerationStage.PREPARATION, "active", 0, 1, "Analizando colores del video...")
+        video_path = prepare_video_for_generation(settings["video"])
         duration, color_frames = analyze_video_colors(
-            settings["video"],
+            video_path,
             int(settings["width"]),
             int(settings["height"]),
             palette,
         )
-        color_frames, frame_durations = compress_consecutive_color_frames(
-            color_frames, [duration] * len(color_frames)
-        )
+        frame_durations = [duration] * len(color_frames)
         report(GenerationStage.PREPARATION, "completed", 1, 1, "Análisis de video completado")
         
         report(GenerationStage.PREPARATION, "active", 0, 1, "Calculando uso de colores por píxel y planificando Gate-ORs...")
@@ -216,7 +215,7 @@ def generate_canvas_build(settings, progress_callback=None, block_callback=None)
             raise ValueError("export_speed must be greater than zero")
         frame_durations = [frame_duration / export_speed for frame_duration in frame_durations]
         analysis = analyze_video_with_gate_or_planning(
-            settings["video"],
+            video_path,
             int(settings["width"]),
             int(settings["height"]),
             palette,
