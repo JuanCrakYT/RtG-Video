@@ -115,34 +115,38 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     gates = [block for block in matrix.build.blocks if block.block_type == "Gate-OR"]
     assert len(gates) == 1
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
-    reused_signal_wire_ids = {
-        wire.id for wire in materialized.timeline_destinations.values()
-    }
+
+    timeline_wires = [wire for wire in analysis.wires if wire.purpose == "timeline"]
+    skipped_timeline = next(wire for wire in timeline_wires if wire.frame_index == 0)
+    retained_timeline = next(wire for wire in timeline_wires if wire.frame_index == 1)
+    assert skipped_timeline.id not in materialized.wire_indexes
+    assert retained_timeline.id in materialized.wire_indexes
+
     for wire in analysis.wires:
-        if wire.id in reused_signal_wire_ids:
+        if wire.id not in materialized.wire_indexes:
+            assert wire.id == skipped_timeline.id
             continue
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
-        assert len(block.connections) == (
-            1 if wire.purpose == "timeline" and wire.id not in materialized.timeline_destinations else 2
-        )
+        assert block.block_type == "Wire"
+        assert len(block.connections) == (1 if wire.purpose == "timeline" else 2)
+
     assert not validate_signal_connections(matrix.build)
 
-    timeline = next(wire for wire in analysis.wires if wire.purpose == "timeline")
-    timeline_block = matrix.build.blocks[materialized.wire_indexes[timeline.id]]
-    first_signal = next(
+    first_signal = [
         wire for wire in analysis.wires
-        if wire.frame_index == 0 and wire.purpose == "pixel-signal"
-    )
-    assert timeline_block.connections == [[
-        "3", "1", materialized.node_indexes["delayer:0"] + 1
-    ]]
-    assert matrix.build.blocks[materialized.wire_indexes[first_signal.id]].connections[0] == [
-        "3", "1", materialized.node_indexes["delayer:0"] + 1
-    ]
+        if wire.frame_index == 0
+        and wire.purpose == "pixel-signal"
+        and wire.source_node == "delayer:0"
+    ][-1]
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
-        ["2", "4", materialized.wire_indexes[timeline.id] + 1]
+        ["2", "4", materialized.wire_indexes[first_signal.id] + 1]
     ]
-
+    assert matrix.build.blocks[materialized.node_indexes["delayer:2"]].connections == [
+        ["2", "4", materialized.wire_indexes[retained_timeline.id] + 1]
+    ]
+    assert not validate_materialized_signal_plan(
+        matrix.build, analysis, _, materialized
+    )
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
     reset_uuid_manager()
