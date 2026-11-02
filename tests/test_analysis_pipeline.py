@@ -64,6 +64,25 @@ def test_compression_rejects_mismatched_durations_and_accepts_empty_input():
     assert compress_consecutive_color_frames([], []) == ([], [])
 
 
+def test_compression_preserves_black_transition_before_terminal_black_frame():
+    frames = [[[RED]], [[BLACK]], [[BLACK]], [[BLACK]]]
+    durations = [0.1, 0.2, 0.3, 0.4]
+
+    compressed_frames, compressed_durations = compress_consecutive_color_frames(
+        frames, durations
+    )
+
+    assert compressed_frames == [[[RED]], [[BLACK]], [[BLACK]]]
+    assert compressed_durations == pytest.approx([0.1, 0.5, 0.4])
+
+    analysis = analyze_color_frames(
+        compressed_frames, 1, 1, frame_durations=compressed_durations
+    )
+    assert analysis.included_frame_indices == [0, 1]
+    assert analysis.frames[1].is_black
+    assert not analysis.frames[2].included_in_build
+
+
 def _materialize(analysis):
     reset_uuid_manager()
     template = PixelTemplate(load_pixel_template_from_file(str(PIXEL_TEMPLATE)))
