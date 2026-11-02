@@ -194,36 +194,97 @@ def test_wires_own_signal_endpoints_while_delayers_keep_one_timeline_input():
     assert gates[0].connections == [["4", gates[0].connections[0][1], 1]]
 
     timeline_wires = [wire for wire in analysis.wires if wire.purpose == "timeline"]
-    skipped_timeline = next(wire for wire in timeline_wires if wire.frame_index == 0)
-    retained_timeline = next(wire for wire in timeline_wires if wire.frame_index == 1)
-    assert skipped_timeline.id not in materialized.wire_indexes
-    assert retained_timeline.id in materialized.wire_indexes
+    first_timeline = next(wire for wire in timeline_wires if wire.frame_index == 0)
+    second_timeline = next(wire for wire in timeline_wires if wire.frame_index == 1)
+    assert first_timeline.id in materialized.wire_indexes
+    assert second_timeline.id in materialized.wire_indexes
 
     for wire in analysis.wires:
-        if wire.id not in materialized.wire_indexes:
-            assert wire.id == skipped_timeline.id
-            continue
         block = matrix.build.blocks[materialized.wire_indexes[wire.id]]
         assert block.block_type == "Wire"
         assert len(block.connections) == (1 if wire.purpose == "timeline" else 2)
 
     assert not validate_signal_connections(matrix.build)
 
-    first_signal = [
-        wire for wire in analysis.wires
-        if wire.frame_index == 0
-        and wire.purpose == "pixel-signal"
-        and wire.source_node == "delayer:0"
-    ][-1]
     assert matrix.build.blocks[materialized.node_indexes["delayer:1"]].connections == [
-        ["2", "4", materialized.wire_indexes[first_signal.id] + 1]
+        ["2", "4", materialized.wire_indexes[first_timeline.id] + 1]
     ]
     assert matrix.build.blocks[materialized.node_indexes["delayer:2"]].connections == [
-        ["2", "4", materialized.wire_indexes[retained_timeline.id] + 1]
+        ["2", "4", materialized.wire_indexes[second_timeline.id] + 1]
     ]
     assert not validate_materialized_signal_plan(
         matrix.build, analysis, endpoints, materialized
     )
+
+
+def test_nine_simultaneous_pixels_get_independent_delayer_fanout_ports():
+    frames = [[[RED, RED, RED], [RED, RED, RED], [RED, RED, RED]]]
+    analysis = analyze_color_frames(frames, 3, 3, frame_durations=[0.1])
+
+    reset_uuid_manager()
+    template = PixelTemplate(load_pixel_template_from_file(str(PIXEL_TEMPLATE)))
+    palettes = {
+        layer.position: {layer.color}
+        for layer in analysis.pixel_layers
+    }
+    matrix = (
+        MatrixBuilder()
+        .set_dimensions(3, 3)
+        .set_template(template)
+        .set_palette_by_position(palettes)
+        .build()
+    )
+    endpoints_by_uuid = resolve_pixel_inputs(matrix.iter_pixels())
+    endpoints = {}
+    for layer in analysis.pixel_layers:
+        pixel = matrix.get_pixel_for_color(*layer.position, layer.color)
+        assert pixel is not None
+        endpoints[layer.id] = endpoints_by_uuid[pixel.uuid]
+
+    materialized = materialize_signal_plan(
+        matrix.build, analysis, endpoints, base_index=matrix.base_index
+    )
+
+    assert len(analysis.pixel_layers) == 9
+    outgoing = [
+        wire for wire in analysis.wires
+        if wire.source_node == "delayer:0"
+    ]
+    assert len(outgoing) == 9
+
+    # Every planned signal must leave a unique Splitter_3 output.
+    source_links = [materialized.wire_source_links[wire.id] for wire in outgoing]
+    assert len(source_links) == len(set(source_links))
+    assert all(
+        matrix.build.blocks[parent_index].block_type == "Splitter_3"
+        and point_id in {"5", "7", "9"}
+        for point_id, parent_index in source_links
+    )
+
+    # A physical output point may have only one child in RtG.
+    for splitter_index, splitter in enumerate(matrix.build.blocks):
+        if splitter.block_type != "Splitter_3":
+            continue
+        for point_id in ("5", "7", "9"):
+            children = [
+                connection
+                for child in matrix.build.blocks
+                for connection in child.connections
+                if connection[2] == splitter_index + 1
+                and connection[1] == point_id
+            ]
+            assert len(children) <= 1
+
+    pixel_wire_indexes = {
+        materialized.wire_indexes[wire.id]
+        for wire in outgoing
+    }
+    assert len(pixel_wire_indexes) == 9
+    assert not validate_materialized_signal_plan(
+        matrix.build, analysis, endpoints, materialized
+    )
+    assert not validate_signal_connections(matrix.build)
+
 
 def test_remote_pixel_template_declares_the_same_splitter_input_port():
     reset_uuid_manager()
