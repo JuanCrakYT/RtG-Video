@@ -138,7 +138,10 @@ _PREPARED_VIDEO_DURATIONS = {}
 
 def _cleanup_prepared_video_files():
     for prepared_path in tuple(_PREPARED_VIDEO_FILES):
-        Path(prepared_path).unlink(missing_ok=True)
+        try:
+            Path(prepared_path).unlink(missing_ok=True)
+        except OSError:
+            pass
         _PREPARED_VIDEO_FILES.discard(prepared_path)
         _PREPARED_VIDEO_DURATIONS.pop(prepared_path, None)
 
