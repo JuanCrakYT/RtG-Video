@@ -170,13 +170,14 @@ def _wire_connections(
     # anchored to the Stick/RemoteButton that was the Splitter's old parent.
     if wire.target_node in pixel_endpoints:
         endpoint = pixel_endpoints[wire.target_node]
-    
+        first_source_index = _endpoint_index(
+            wire.source_node, node_indexes, pixel_endpoints
+        )
         point = (
             WIRE_POINT_RIGHT
-            if wire.is_first
+            if source_index == first_source_index
             else WIRE_POINT_LEFT
         )
-    
         return [
             [TIPOLOCAL_WIRE, endpoint.anchor_point_id, to_rtg_index(endpoint.anchor_block_index)],
             [TIPOLOCAL_BUTTON, point, to_rtg_index(source_index)],
