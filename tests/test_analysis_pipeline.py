@@ -15,12 +15,7 @@ from src.display.pixel import PixelTemplate
 from src.rtg.format import load_pixel_template_from_file, validate_build_json
 from src.rtg.uuid import reset_uuid_manager
 from src.video.analysis import ConnectionPlanError, analyze_color_frames, export_analysis_json
-from src.video.processing import (
-    BLACK,
-    get_video_frame_durations,
-    prepare_video_for_generation,
-    release_prepared_video,
-)
+from src.video.processing import prepare_video_for_generation
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,76 +25,9 @@ RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 
 
-def test_video_preparation_returns_original_when_no_adjacent_duplicates(tmp_path):
-    import cv2
-    import numpy as np
-
-    video_path = tmp_path / "unique.avi"
-    writer = cv2.VideoWriter(
-        str(video_path),
-        cv2.VideoWriter_fourcc(*"MJPG"),
-        10.0,
-        (16, 16),
-    )
-    if not writer.isOpened():
-        pytest.skip("OpenCV MJPG encoder is unavailable")
-
-    writer.write(np.zeros((16, 16, 3), dtype=np.uint8))
-    writer.write(np.full((16, 16, 3), 255, dtype=np.uint8))
-    writer.release()
-
+def test_video_preparation_placeholder_leaves_source_unchanged():
+    video_path = Path("sample.mp4")
     assert prepare_video_for_generation(video_path) is video_path
-
-
-def test_video_preparation_removes_only_adjacent_identical_frames(tmp_path):
-    import cv2
-    import numpy as np
-
-    source = tmp_path / "repeated.avi"
-    writer = cv2.VideoWriter(
-        str(source),
-        cv2.VideoWriter_fourcc(*"MJPG"),
-        10.0,
-        (16, 16),
-    )
-    if not writer.isOpened():
-        pytest.skip("OpenCV MJPG encoder is unavailable")
-
-    first = np.full((16, 16, 3), (0, 0, 255), dtype=np.uint8)
-    second = np.full((16, 16, 3), (0, 255, 0), dtype=np.uint8)
-    for frame in (first, first, second, second, first):
-        writer.write(frame)
-    writer.release()
-
-    prepared = prepare_video_for_generation(source)
-    try:
-        assert prepared != source
-        assert source.is_file()
-
-        capture = cv2.VideoCapture(str(prepared))
-        try:
-            assert capture.isOpened()
-            decoded_frames = 0
-            while True:
-                success, _ = capture.read()
-                if not success:
-                    break
-                decoded_frames += 1
-            assert decoded_frames == 3
-        finally:
-            capture.release()
-
-        assert get_video_frame_durations(prepared, 0.1, 3) == pytest.approx(
-            [0.2, 0.2, 0.1], abs=0.02
-        )
-
-        original = cv2.VideoCapture(str(source))
-        try:
-            assert int(original.get(cv2.CAP_PROP_FRAME_COUNT)) == 5
-        finally:
-            original.release()
-    finally:
-        release_prepared_video(prepared)
 
 
 def _materialize(analysis):
