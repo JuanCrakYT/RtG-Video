@@ -133,14 +133,31 @@ def analyze_video_colors(video_path, width: int, height: int, palette: Iterable[
 
 
 _PREPARED_VIDEO_FILES = set()
+_PREPARED_VIDEO_DURATIONS = {}
 
 
 def _cleanup_prepared_video_files():
     for prepared_path in tuple(_PREPARED_VIDEO_FILES):
-        try:
-            Path(prepared_path).unlink(missing_ok=True)
-        finally:
-            _PREPARED_VIDEO_FILES.discard(prepared_path)
+        Path(prepared_path).unlink(missing_ok=True)
+        _PREPARED_VIDEO_FILES.discard(prepared_path)
+        _PREPARED_VIDEO_DURATIONS.pop(prepared_path, None)
+
+
+def get_video_frame_durations(video_path, default_duration, frame_count):
+    """Return preserved per-frame durations for a prepared video when available."""
+    key = str(Path(video_path).expanduser().resolve())
+    durations = _PREPARED_VIDEO_DURATIONS.get(key)
+    if durations is not None and len(durations) == frame_count:
+        return list(durations)
+    return [float(default_duration)] * frame_count
+
+
+def release_prepared_video(video_path):
+    """Release a temporary prepared video and its timing metadata."""
+    key = str(Path(video_path).expanduser().resolve())
+    _PREPARED_VIDEO_DURATIONS.pop(key, None)
+    _PREPARED_VIDEO_FILES.discard(key)
+    Path(key).unlink(missing_ok=True)
 
 
 atexit.register(_cleanup_prepared_video_files)
@@ -156,7 +173,10 @@ def _duplicate_frame_ranges(video_path):
     if not capture.isOpened():
         raise ValueError(f"Could not open video: {video_path}")
 
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    fallback_duration = 1.0 / fps if fps and fps > 0 else 0.05
     duplicate_ranges = []
+    timestamps = []
     previous_frame = None
     frame_index = 0
     try:
@@ -165,6 +185,8 @@ def _duplicate_frame_ranges(video_path):
             if not success:
                 break
 
+            timestamp = capture.get(cv2.CAP_PROP_POS_MSEC) / 1000.0
+            timestamps.append(timestamp)
             if previous_frame is not None and np.array_equal(frame, previous_frame):
                 if duplicate_ranges and duplicate_ranges[-1][1] == frame_index - 1:
                     duplicate_ranges[-1] = (duplicate_ranges[-1][0], frame_index)
@@ -178,7 +200,26 @@ def _duplicate_frame_ranges(video_path):
 
     if frame_index == 0:
         raise ValueError(f"Video contains no readable frames: {video_path}")
-    return duplicate_ranges, frame_index
+
+    frame_durations = []
+    for index in range(frame_index - 1):
+        delta = timestamps[index + 1] - timestamps[index]
+        frame_durations.append(delta if delta > 0 else fallback_duration)
+    frame_durations.append(fallback_duration)
+
+    dropped_indexes = {
+        index
+        for start, end in duplicate_ranges
+        for index in range(start, end + 1)
+    }
+    kept_durations = []
+    for index, duration in enumerate(frame_durations):
+        if index in dropped_indexes:
+            kept_durations[-1] += duration
+        else:
+            kept_durations.append(duration)
+
+    return duplicate_ranges, frame_index, kept_durations
 
 
 def prepare_video_for_generation(video_path):
@@ -192,7 +233,7 @@ def prepare_video_for_generation(video_path):
     if not source.is_file():
         raise FileNotFoundError(source)
 
-    duplicate_ranges, total_frames = _duplicate_frame_ranges(source)
+    duplicate_ranges, total_frames, kept_durations = _duplicate_frame_ranges(source)
     if not duplicate_ranges:
         return video_path
 
@@ -269,7 +310,9 @@ def prepare_video_for_generation(video_path):
         finally:
             verification.release()
 
-        _PREPARED_VIDEO_FILES.add(str(output))
+        output_key = str(output.resolve())
+        _PREPARED_VIDEO_FILES.add(output_key)
+        _PREPARED_VIDEO_DURATIONS[output_key] = kept_durations
         return output
     except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
         output.unlink(missing_ok=True)
