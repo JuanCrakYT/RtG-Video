@@ -436,4 +436,4 @@ def export_analysis_json(analysis: VideoAnalysisResult, output_path: str) -> Non
     _validate_signal_plan(analysis)
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(build_gate_or_table_report(analysis), indent=2), encoding="utf-8")
+    path.write_text(json.dumps(build_gate_or_table_report(analysis), separators=(",", ":"), ensure_ascii=False), encoding="utf-8")
